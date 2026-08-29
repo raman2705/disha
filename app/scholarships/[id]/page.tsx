@@ -1,12 +1,19 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
+import clsx from "clsx";
 import { PageHeader } from "@/components/PageHeader";
 import { InstitutionStatus } from "@/components/InstitutionStatus";
 import { PrimaryLink } from "@/components/PrimaryButton";
-import { RequirementChecklist } from "@/components/RequirementChecklist";
 import { StatusBadge } from "@/components/StatusBadge";
 import { scholarships } from "@/lib/data";
+import { evaluateScholarship, sampleEligibilityProfile } from "@/lib/matching";
+
+const statusTone = {
+  recommended: "success",
+  could: "warning",
+  ineligible: "danger"
+} as const;
 
 export function generateStaticParams() {
   return scholarships.map((scholarship) => ({ id: scholarship.id }));
@@ -20,7 +27,13 @@ export default async function ScholarshipDetail({ params }: { params: Promise<{ 
     notFound();
   }
 
-  const isCentral = scholarship.id === "central-sector-scholarship";
+  const result = evaluateScholarship(scholarship, sampleEligibilityProfile());
+  const statusLabel =
+    result.state === "recommended"
+      ? "You appear eligible"
+      : result.state === "could"
+        ? `${result.missing.length} detail needed`
+        : "Not eligible for sample profile";
 
   return (
     <div>
@@ -31,9 +44,7 @@ export default async function ScholarshipDetail({ params }: { params: Promise<{ 
 
       <PageHeader title={scholarship.title}>
         <div className="flex flex-wrap gap-3 pt-2">
-          <StatusBadge tone={scholarship.status === "Eligible" ? "success" : scholarship.status === "Needs information" ? "warning" : "neutral"}>
-            {isCentral ? "You appear eligible" : scholarship.status}
-          </StatusBadge>
+          <StatusBadge tone={statusTone[result.state]}>{statusLabel}</StatusBadge>
           <span className="rounded-md border border-slate-200 bg-white px-3 py-1 text-sm font-semibold text-ink">
             {scholarship.amount}
           </span>
@@ -43,92 +54,83 @@ export default async function ScholarshipDetail({ params }: { params: Promise<{ 
         </div>
       </PageHeader>
 
-      {isCentral ? (
-        <div className="grid gap-6 lg:grid-cols-[1fr_0.85fr]">
-          <section className="rounded-xl bg-white p-6 shadow-sm ring-1 ring-emerald-200">
-            <h2 className="text-xl font-bold text-ink">Why you qualify</h2>
-            <p className="mt-2 text-sm leading-6 text-slate-700">
-              You meet the current published criteria based on your saved profile. The decision is rule-based, and the explanation is written in student-friendly language.
-            </p>
-            <div className="mt-5">
-              <RequirementChecklist
-                items={[
-                  { label: "Undergraduate student", state: "done" },
-                  { label: "Class 12 score above required threshold", state: "done" },
-                  { label: "Household income within limit", state: "done" }
-                ]}
-              />
-            </div>
-          </section>
+      <div className="grid gap-6 lg:grid-cols-[1fr_0.78fr]">
+        <section className="rounded-xl bg-white p-6 shadow-sm ring-1 ring-stone-200">
+          <h2 className="text-xl font-bold text-ink">Eligibility evidence</h2>
+          <p className="mt-2 text-sm leading-6 text-muted">
+            Eligibility shown here is a simplified prototype assessment based on the information provided. Confirm final scheme rules before applying.
+          </p>
+          <div className="mt-5 grid gap-4 sm:grid-cols-2">
+            {result.evidence.length ? (
+              result.evidence.map((item) => (
+                <div
+                  key={item.label}
+                  className={clsx(
+                    "rounded-lg border-l-2 bg-[#FBF7F1] p-3",
+                    item.result === "pass" && "border-emerald-500",
+                    item.result === "warning" && "border-amber-500",
+                    item.result === "fail" && "border-red-500"
+                  )}
+                >
+                  <p className={clsx("text-sm font-bold", item.result === "fail" ? "text-red-800" : item.result === "warning" ? "text-amber-900" : "text-ink")}>
+                    {item.result === "fail" ? "×" : item.result === "warning" ? "○" : "✓"} {item.label}: {item.value}
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-muted">{item.requirement}</p>
+                </div>
+              ))
+            ) : (
+              <p className="text-sm text-muted">Add profile details to see personalised evidence for this scheme.</p>
+            )}
+          </div>
+        </section>
 
-          <section className="rounded-xl bg-white p-6 shadow-sm ring-1 ring-stone-200">
-            <h2 className="text-xl font-bold text-ink">What you’ll need</h2>
-            <div className="mt-5">
-              <RequirementChecklist
-                items={[
-                  { label: "Aadhaar", state: "done" },
-                  { label: "Bank details", state: "done" },
-                  { label: "Income certificate", state: "done" },
-                  { label: "Institute enrolment proof", state: "missing" }
-                ]}
-              />
+        <aside className="rounded-xl bg-white p-6 shadow-sm ring-1 ring-stone-200">
+          <h2 className="text-xl font-bold text-ink">Scheme summary</h2>
+          <dl className="mt-5 space-y-4 text-sm">
+            <div>
+              <dt className="font-semibold text-muted">Provider</dt>
+              <dd className="mt-1 font-bold text-ink">{scholarship.provider}</dd>
             </div>
-            <div className="mt-6">
-              <PrimaryLink href="/preflight">Check application readiness</PrimaryLink>
+            <div>
+              <dt className="font-semibold text-muted">Level</dt>
+              <dd className="mt-1 font-bold text-ink">{scholarship.level.join(", ")}</dd>
             </div>
-          </section>
+            <div>
+              <dt className="font-semibold text-muted">Applicability</dt>
+              <dd className="mt-1 font-bold text-ink">{scholarship.applicability}</dd>
+            </div>
+            <div>
+              <dt className="font-semibold text-muted">Fresh / renewal</dt>
+              <dd className="mt-1 font-bold text-ink">{scholarship.cycle}</dd>
+            </div>
+          </dl>
+          <div className="mt-6">
+            <PrimaryLink href={result.state === "recommended" ? "/preflight" : "/scholarships"}>
+              {result.state === "recommended" ? "Check application readiness" : "Compare scholarships"}
+            </PrimaryLink>
+          </div>
+        </aside>
 
-          <section className="rounded-xl bg-white p-6 shadow-sm ring-1 ring-stone-200 lg:col-span-2">
-            <h2 className="text-xl font-bold text-ink">What happens outside your application?</h2>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">
-              Your institution also needs to complete 1 action. {scholarship.institutionAction}
-            </p>
-            <div className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
-              <p>
-                <span className="font-semibold text-ink">Status:</span> Waiting for institution
+        <section className="rounded-xl bg-white p-6 shadow-sm ring-1 ring-stone-200 lg:col-span-2">
+          <h2 className="text-xl font-bold text-ink">Simplified criteria</h2>
+          <div className="mt-4 grid gap-3 md:grid-cols-3">
+            {scholarship.criteria.map((criterion) => (
+              <p key={criterion} className="rounded-lg bg-[#FBF7F1] p-3 text-sm font-semibold text-ink">
+                {criterion}
               </p>
-              <p>
-                <span className="font-semibold text-ink">Student action:</span> No action required yet
-              </p>
-            </div>
-          </section>
+            ))}
+          </div>
+          <p className="mt-5 text-sm leading-6 text-muted">
+            {scholarship.institutionAction}
+          </p>
+        </section>
 
+        {result.state === "recommended" ? (
           <div className="lg:col-span-2">
             <InstitutionStatus mode="compact" />
           </div>
-
-          <section className="rounded-xl bg-white p-6 shadow-sm ring-1 ring-stone-200 lg:col-span-2">
-            <div className="grid gap-6 md:grid-cols-3">
-              <div>
-                <h2 className="text-lg font-bold text-ink">About this scholarship</h2>
-                <p className="mt-2 text-sm leading-6 text-muted">
-                  Supports undergraduate students with annual assistance for academic expenses.
-                </p>
-              </div>
-              <div>
-                <h2 className="text-lg font-bold text-ink">Eligibility criteria</h2>
-                <p className="mt-2 text-sm leading-6 text-muted">
-                  Undergraduate enrolment, required academic score and household income within the allowed limit.
-                </p>
-              </div>
-              <div>
-                <h2 className="text-lg font-bold text-ink">Documents required</h2>
-                <p className="mt-2 text-sm leading-6 text-muted">
-                  Aadhaar, bank account details, income certificate and current institute enrolment proof.
-                </p>
-              </div>
-            </div>
-          </section>
-        </div>
-      ) : (
-        <section className="rounded-lg border border-slate-200 bg-white p-6">
-          <h2 className="text-xl font-bold text-ink">Eligibility explanation</h2>
-          <p className="mt-3 max-w-3xl text-sm leading-6 text-muted">{scholarship.explanation}</p>
-          <div className="mt-6">
-            <PrimaryLink href="/scholarships">Compare scholarships</PrimaryLink>
-          </div>
-        </section>
-      )}
+        ) : null}
+      </div>
     </div>
   );
 }

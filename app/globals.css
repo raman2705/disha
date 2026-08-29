@@ -3,8 +3,8 @@
 @tailwind utilities;
 
 :root {
-  color: #0f172a;
-  background: #fbfaf7;
+  color: #16233b;
+  background: #fbf7f1;
 }
 
 * {
@@ -13,8 +13,8 @@
 
 body {
   margin: 0;
-  background: #fbfaf7;
-  color: #0f172a;
+  background: #fbf7f1;
+  color: #16233b;
 }
 
 button,
