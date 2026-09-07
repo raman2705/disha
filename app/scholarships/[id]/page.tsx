@@ -58,7 +58,7 @@ export default async function ScholarshipDetail({ params }: { params: Promise<{ 
         <section className="rounded-xl bg-white p-6 shadow-sm ring-1 ring-stone-200">
           <h2 className="text-xl font-bold text-ink">Eligibility evidence</h2>
           <p className="mt-2 text-sm leading-6 text-muted">
-            Eligibility shown here is a simplified prototype assessment based on the information provided. Confirm final scheme rules before applying.
+            Eligibility is based on the information provided. Confirm final scheme rules before applying.
           </p>
           <div className="mt-5 grid gap-4 sm:grid-cols-2">
             {result.evidence.length ? (

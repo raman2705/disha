@@ -5,40 +5,40 @@ import { ArrowRight, CalendarClock, FileWarning, Hourglass, Search, WalletCards 
 import { OwnershipRail } from "@/components/OwnershipRail";
 import { PrimaryLink } from "@/components/PrimaryButton";
 import { StatusBadge } from "@/components/StatusBadge";
-import { institution } from "@/lib/data";
-
-const activeRail = [
-  { actor: "Student", state: "completed" as const, detail: "Done" },
-  { actor: "ABC College", state: "current" as const, detail: "Reviewing" },
-  { actor: "Verification", state: "waiting" as const, detail: "Next" },
-  { actor: "Scheme", state: "waiting" as const, detail: "Waiting" },
-  { actor: "PFMS", state: "waiting" as const, detail: "Waiting" },
-  { actor: "Bank", state: "waiting" as const, detail: "Waiting" }
-];
+import { canonicalGuidedDemoOpportunityId, demoApplications, getApplicationOwnership, getCanonicalApplicationForDemoState, profile } from "@/lib/data";
+import { useAppState } from "@/components/AppContext";
 
 export default function Dashboard() {
+  const { demoState } = useAppState();
+  const activeApplication = getCanonicalApplicationForDemoState(demoState, canonicalGuidedDemoOpportunityId);
+  const activeOwnership = activeApplication ? getApplicationOwnership(activeApplication) : null;
+  const scholarshipApplications = [
+    activeApplication,
+    ...demoApplications.filter((application) => application.category === "Scholarship" && application.opportunityId !== canonicalGuidedDemoOpportunityId)
+  ];
+
   return (
     <div className="space-y-9">
       <section className="overflow-hidden rounded-[1.1rem] bg-white p-7 shadow-soft sm:p-8">
         <div className="grid gap-8 lg:grid-cols-[0.42fr_0.58fr] lg:items-center">
           <div>
-            <p className="text-sm font-semibold text-accent">Good afternoon, Aditi</p>
+            <p className="text-sm font-semibold text-accent">Good afternoon, {profile.name.split(" ")[0]}</p>
             <p className="mt-6 text-sm font-semibold text-muted">Academic year 2026-27</p>
             <h1 className="mt-2 max-w-md text-4xl font-bold leading-tight tracking-normal text-ink sm:text-5xl">
-              Central Sector Scholarship
+              {activeApplication?.title ?? "AICTE Pragati Scholarship"}
             </h1>
             <div className="mt-6 flex flex-wrap items-end gap-4">
               <div>
-                <p className="mt-1 text-4xl font-bold text-ink">₹12,000</p>
+                <p className="mt-1 text-4xl font-bold text-ink">{activeApplication?.benefit ?? "Rs 50,000/year"}</p>
                 <p className="text-sm font-semibold text-muted">Scholarship amount</p>
               </div>
-              <StatusBadge tone="active">Waiting on ABC College</StatusBadge>
+              <StatusBadge tone="active">{activeOwnership?.label ?? "Waiting on institution"}</StatusBadge>
             </div>
             <p className="mt-5 max-w-xl text-base leading-7 text-muted">
-              Your application is complete. ABC College is reviewing your enrolment and documents.
+              {activeOwnership?.summary ?? "Your application is complete. Your institution is reviewing your enrolment and documents."}
             </p>
-            <p className="mt-4 text-lg font-bold text-ink">Nothing required from you right now.</p>
-            <Link href="/applications/css-2026" className="mt-6 inline-flex items-center gap-2 text-sm font-bold text-primary">
+            <p className="mt-4 text-lg font-bold text-ink">{activeOwnership?.applicantAction ?? "Nothing required from you right now."}</p>
+            <Link href="/applications/pragati-readiness-2026" className="mt-6 inline-flex items-center gap-2 text-sm font-bold text-primary">
               Track verification <ArrowRight size={16} />
             </Link>
           </div>
@@ -46,10 +46,10 @@ export default function Dashboard() {
           <div className="space-y-4">
             <div>
               <p className="text-xs font-bold uppercase tracking-normal text-muted">Current owner</p>
-              <h2 className="mt-2 text-2xl font-bold text-ink">{institution.cell}</h2>
-              <p className="mt-1 text-sm font-semibold text-primary">Institute verification · Day 6</p>
+              <h2 className="mt-2 text-2xl font-bold text-ink">{activeOwnership?.currentOwner ?? "Institution"}</h2>
+              <p className="mt-1 text-sm font-semibold text-primary">{activeOwnership?.status ?? "Institute verification"}</p>
             </div>
-            <OwnershipRail items={activeRail} evidence="Institute verification pending · updated 27 Aug" />
+            {activeOwnership ? <OwnershipRail items={activeOwnership.rail} evidence={activeOwnership.evidence} /> : null}
           </div>
         </div>
       </section>
@@ -81,13 +81,13 @@ export default function Dashboard() {
             </span>
             <div>
               <p className="text-xs font-bold uppercase tracking-normal text-muted">Waiting on others</p>
-              <h2 className="mt-2 text-2xl font-bold text-ink">{institution.cell}</h2>
+              <h2 className="mt-2 text-2xl font-bold text-ink">{activeOwnership?.currentOwner ?? "Institution"}</h2>
               <p className="mt-2 font-semibold text-primary">Scholarship verification pending</p>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
                 Waiting for 3 days. Disha will surface a student action only if the application is returned.
               </p>
               <div className="mt-5">
-                <PrimaryLink href="/applications/css-2026">Open verification</PrimaryLink>
+                <PrimaryLink href="/applications/pragati-readiness-2026">Open verification</PrimaryLink>
               </div>
             </div>
           </div>
@@ -122,7 +122,7 @@ export default function Dashboard() {
           <p className="mt-3 text-sm leading-6 text-muted">
             Payment begins only after scheme approval. Disha will track PFMS and bank validation once the scholarship is sanctioned.
           </p>
-          <Link href="/payments/css-2026" className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-primary">
+          <Link href="/payments/pragati-payment-2026" className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-primary">
             See payment tracker <ArrowRight size={16} />
           </Link>
         </article>
@@ -133,27 +133,26 @@ export default function Dashboard() {
           <h2 className="text-2xl font-bold text-ink">Your scholarships</h2>
           <p className="mt-1 text-sm text-muted">Active, payment, and renewal states in one place.</p>
         </div>
-        {[
-          { title: "Central Sector Scholarship", year: "2026-27", status: "Verification waiting", owner: institution.cell, href: "/applications/css-2026" },
-          { title: "Central Sector Scholarship", year: "Payment cycle", status: "Bank validation issue", owner: "Student", href: "/payments/css-2026" },
-          { title: "Central Sector Scholarship", year: "2027-28 renewal", status: "Renewal requirements pending", owner: "Student", href: "/renewal" }
-        ].map((row) => (
-          <Link key={`${row.year}-${row.status}`} href={row.href} className="grid gap-3 border-b border-stone-100 p-5 transition last:border-b-0 hover:bg-[#FBF7F1] md:grid-cols-[1fr_0.8fr_0.8fr_auto] md:items-center">
-            <div>
-              <p className="font-bold text-ink">{row.title}</p>
-              <p className="mt-1 text-sm text-muted">{row.year}</p>
-            </div>
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-normal text-muted">Status</p>
-              <p className="mt-1 text-sm font-semibold text-ink">{row.status}</p>
-            </div>
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-normal text-muted">Current owner</p>
-              <p className="mt-1 text-sm font-semibold text-ink">{row.owner}</p>
-            </div>
-            <ArrowRight className="text-primary" size={18} />
-          </Link>
-        ))}
+        {scholarshipApplications.map((application) => {
+          const ownership = getApplicationOwnership(application);
+          return (
+            <Link key={application.id} href={application.href} className="grid gap-3 border-b border-stone-100 p-5 transition last:border-b-0 hover:bg-[#FBF7F1] md:grid-cols-[1fr_0.8fr_0.8fr_auto] md:items-center">
+              <div>
+                <p className="font-bold text-ink">{application.title}</p>
+                <p className="mt-1 text-sm text-muted">{application.canonicalStage}</p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-normal text-muted">Status</p>
+                <p className="mt-1 text-sm font-semibold text-ink">{ownership.status}</p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-normal text-muted">Current owner</p>
+                <p className="mt-1 text-sm font-semibold text-ink">{ownership.currentOwner}</p>
+              </div>
+              <ArrowRight className="text-primary" size={18} />
+            </Link>
+          );
+        })}
       </section>
 
       <section className="rounded-[1rem] bg-[#EEF2FF] p-6">

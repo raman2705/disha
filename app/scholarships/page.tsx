@@ -127,7 +127,7 @@ export default function ScholarshipsPage() {
 
       <section className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-[1rem] bg-[#EEF2FF] p-4">
         <div>
-          <h2 className="text-lg font-bold text-ink">{shown.length} scholarship records</h2>
+          <h2 className="text-lg font-bold text-ink">{shown.length} scholarships</h2>
           <p className="mt-1 text-sm text-muted">
             {personalised ? "Disha now knows which schemes are relevant to this sample student." : "General criteria are shown before profile personalisation."}
           </p>

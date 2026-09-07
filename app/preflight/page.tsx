@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import clsx from "clsx";
 import { CheckCircle2, FileUp, RefreshCw } from "lucide-react";
 import { InstitutionStatus } from "@/components/InstitutionStatus";
@@ -8,18 +8,33 @@ import { PageHeader } from "@/components/PageHeader";
 import { PrimaryLink } from "@/components/PrimaryButton";
 import { RequirementChecklist } from "@/components/RequirementChecklist";
 import { StatusBadge } from "@/components/StatusBadge";
-import { institution } from "@/lib/data";
+import { useAppState } from "@/components/AppContext";
+import { canonicalGuidedDemoOpportunityId, getGuidedDemoApplication, institution } from "@/lib/data";
+import { buildOpportunityAssessmentResult, getOpportunity, sampleAssessmentResponses } from "@/lib/opportunities";
 
 export default function PreflightPage() {
+  const { guidedDemoActive, guidedDemoOpportunityId, setDemoState } = useAppState();
+  const guidedApplication = getGuidedDemoApplication(guidedDemoOpportunityId);
+  const opportunity = getOpportunity(guidedApplication?.opportunityId ?? canonicalGuidedDemoOpportunityId) ?? getOpportunity(canonicalGuidedDemoOpportunityId);
+  const responses = opportunity ? sampleAssessmentResponses[opportunity.id] ?? {} : {};
+  const assessment = opportunity ? buildOpportunityAssessmentResult(opportunity, responses) : null;
+  const firstIssue = assessment?.gaps[0];
+  const secondIssue = assessment?.gaps[1] ?? assessment?.gaps[0];
   const [documentAdded, setDocumentAdded] = useState(false);
   const [certificateReplaced, setCertificateReplaced] = useState(false);
   const studentIssues = Number(!documentAdded) + Number(!certificateReplaced);
   const studentComplete = studentIssues === 0;
 
+  useEffect(() => {
+    if (guidedDemoActive) setDemoState("prepare");
+  }, [guidedDemoActive, setDemoState]);
+
   return (
     <div>
-      <PageHeader title="Check before you apply">
-        Requirements are grouped by who owns the work, so you can see what you control and what depends on someone else.
+      <PageHeader title={guidedDemoActive ? `${opportunity?.name ?? "Selected opportunity"}: strengthen before you apply` : "Check before you apply"}>
+        {guidedDemoActive
+          ? "Requirements are grouped by who owns the work, so Ananya can see what she controls and what depends on someone else."
+          : "Requirements are grouped by who owns the work, so you can see what you control and what depends on someone else."}
       </PageHeader>
 
       <section className="mb-8 grid gap-6 lg:grid-cols-[0.85fr_1.15fr]">
@@ -34,14 +49,18 @@ export default function PreflightPage() {
           <p className="mt-4 text-sm leading-6 text-muted">
             {studentComplete
               ? "You have finished your tasks. Remaining movement depends on external verification."
-              : "Resolve your own tasks before submitting, then the application can move to institution verification."}
+              : guidedDemoActive
+                ? "Resolve student-owned gaps before submitting, then the application can move to institution verification."
+                : "Resolve your own tasks before submitting, then the application can move to institution verification."}
           </p>
           <div className="mt-6 border-t border-stone-100 pt-5">
             <p className="text-xs font-bold uppercase tracking-normal text-muted">Overall application status</p>
             <h2 className="mt-2 text-xl font-bold text-ink">
               {studentComplete ? "Waiting on 1 external action" : "Waiting on your tasks and 1 external action"}
             </h2>
-            <p className="mt-2 text-sm leading-6 text-muted">{institution.cell} still needs to complete scholarship verification.</p>
+            <p className="mt-2 text-sm leading-6 text-muted">
+              {guidedDemoActive ? `${institution.cell} still needs to complete verification after submission.` : `${institution.cell} still needs to complete scholarship verification.`}
+            </p>
           </div>
           <div className="mt-6">
             {studentComplete ? (
@@ -61,22 +80,22 @@ export default function PreflightPage() {
               { label: "Aadhaar verified", state: "done" },
               { label: "Bank details complete", state: "done" },
               { label: "Academic details complete", state: "done" },
-              { label: "Income certificate validity risk", state: certificateReplaced ? "done" : "warning" },
-              { label: "Enrolment proof added", state: documentAdded ? "done" : "missing" }
+              { label: certificateReplaced ? "Income certificate refreshed" : "Refresh current income certificate", state: certificateReplaced ? "done" : "warning" },
+              { label: documentAdded ? "Legal name checked against bank record" : "Confirm legal name matches bank record", state: documentAdded ? "done" : "missing" }
             ]}
           />
           <OwnerGroup
             title="Your institution"
             items={[
               { label: "Enrolment confirmed", state: "done" },
-              { label: "Scholarship verification pending", state: "pending" }
+              { label: guidedDemoActive ? "Opportunity verification pending" : "Scholarship verification pending", state: "pending" }
             ]}
           />
           <OwnerGroup
             title="System checks"
             items={[
               { label: "Profile verified", state: "done" },
-              { label: "Scheme eligibility passed", state: "done" }
+              { label: guidedDemoActive ? `${opportunity?.category ?? "Opportunity"} eligibility passed` : "Scheme eligibility passed", state: "done" }
             ]}
           />
         </div>
@@ -85,7 +104,9 @@ export default function PreflightPage() {
       <section className="mb-8 rounded-xl bg-white p-6 shadow-sm ring-1 ring-stone-200">
         <h2 className="text-xl font-bold text-ink">What happens outside your application?</h2>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">
-          Your institution also needs to complete 1 action. ABC College must confirm scholarship verification before the scholarship can proceed.
+          {guidedDemoActive
+            ? `Your institution also needs to complete 1 action. ${institution.name} must confirm verification before the application can proceed.`
+            : `Your institution also needs to complete 1 action. ${institution.name} must confirm scholarship verification before the scholarship can proceed.`}
         </p>
         <div className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
           <p>
@@ -98,27 +119,27 @@ export default function PreflightPage() {
       </section>
 
       <div className="grid gap-5 lg:grid-cols-2">
-        <IssueCard
-          resolved={documentAdded}
-          severity="Required"
-          title="Institute enrolment proof missing"
-          explanation="Add your copy of current enrolment proof so ABC College can complete verification without returning the application."
-          why="Your upload is the part you control. ABC College still owns the scholarship verification action after submission."
+          <IssueCard
+            resolved={certificateReplaced}
+            severity="Required"
+          title={guidedDemoActive ? "Refresh current income certificate" : "Income certificate may expire during verification"}
+          explanation={guidedDemoActive ? firstIssue?.missing ?? "Your current income proof should be refreshed before final submission." : "Your income certificate expires shortly after the application deadline. If verification happens later, your institute may ask for a newer certificate."}
+          why={guidedDemoActive ? firstIssue?.action ?? "Refresh the supporting detail if available." : "Replace it with a newer certificate if available."}
           actor="You"
-          cta="Add document"
-          icon={<FileUp size={18} />}
-          onResolve={() => setDocumentAdded(true)}
-        />
-        <IssueCard
-          resolved={certificateReplaced}
-          severity="Warning"
-          title="Income certificate may expire during verification"
-          explanation="Your income certificate expires shortly after the application deadline. If verification happens later, your institute may ask for a newer certificate."
-          why="Replace it with a newer certificate if available."
-          actor="You"
-          cta="Replace certificate"
+          cta={guidedDemoActive ? "Refresh certificate" : "Replace certificate"}
           icon={<RefreshCw size={18} />}
           onResolve={() => setCertificateReplaced(true)}
+        />
+        <IssueCard
+            resolved={documentAdded}
+            severity="Warning"
+          title={guidedDemoActive ? "Confirm legal name matches bank record" : "Institute enrolment proof missing"}
+          explanation={guidedDemoActive ? secondIssue?.missing ?? "Confirm the full legal name matches the bank record before submission." : `Add your copy of current enrolment proof so ${institution.name} can complete verification without returning the application.`}
+          why={guidedDemoActive ? secondIssue?.action ?? "Use the same legal name everywhere." : `Your upload is the part you control. ${institution.name} still owns the scholarship verification action after submission.`}
+          actor="You"
+          cta={guidedDemoActive ? "Confirm name" : "Add document"}
+          icon={<FileUp size={18} />}
+          onResolve={() => setDocumentAdded(true)}
         />
       </div>
 

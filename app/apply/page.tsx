@@ -1,20 +1,31 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CheckCircle2, Send } from "lucide-react";
 import { ApplicationProgress } from "@/components/ApplicationProgress";
 import { PageHeader } from "@/components/PageHeader";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { RequirementChecklist } from "@/components/RequirementChecklist";
-import { applicationId, profile } from "@/lib/data";
+import { useAppState } from "@/components/AppContext";
+import { canonicalGuidedDemoOpportunityId, getApplicationReference, getDemoApplication, getGuidedDemoApplication, institution, profile } from "@/lib/data";
+import { getOpportunity } from "@/lib/opportunities";
 
 const steps = ["Personal details", "Education", "Bank details", "Documents & review"];
 
 export default function ApplyPage() {
   const router = useRouter();
+  const { guidedDemoActive, guidedDemoOpportunityId, setDemoState } = useAppState();
+  const guidedApplication = guidedDemoActive ? getGuidedDemoApplication(guidedDemoOpportunityId) : getDemoApplication("css-2026");
+  const opportunity = getOpportunity(guidedApplication?.opportunityId ?? canonicalGuidedDemoOpportunityId) ?? getOpportunity(canonicalGuidedDemoOpportunityId);
+  const applicationTitle = guidedDemoActive ? opportunity?.name ?? guidedApplication?.title ?? "Selected opportunity" : "Central Sector Scholarship";
+  const trackerHref = guidedDemoActive ? guidedApplication?.href ?? "/applications" : "/applications/css-2026";
   const [step, setStep] = useState(0);
   const [submitted, setSubmitted] = useState(false);
+
+  useEffect(() => {
+    if (guidedDemoActive) setDemoState(submitted ? "verification" : "apply");
+  }, [guidedDemoActive, submitted, setDemoState]);
   const fields = useMemo(
     () => [
       [
@@ -31,7 +42,7 @@ export default function ApplyPage() {
       ],
       [
         ["Bank account", "State Bank of India ending 2042"],
-        ["Beneficiary name", "Aditi Sharma"],
+        ["Beneficiary name", profile.name],
         ["IFSC", "SBIN0004521"],
         ["Validation", "Verified"]
       ]
@@ -46,20 +57,20 @@ export default function ApplyPage() {
           <CheckCircle2 className="text-emerald-700" size={34} />
           <h1 className="mt-4 text-3xl font-bold text-ink">Application submitted</h1>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-700">
-            Your Central Sector Scholarship application is now with ABC College Scholarship Cell for institute verification.
+            {guidedDemoActive ? `Ananya's ${applicationTitle} application` : `Your ${applicationTitle} application`} is now with {institution.cell} for institute verification.
           </p>
           <dl className="mt-6 grid gap-3 sm:grid-cols-2">
             <div className="rounded-md bg-white p-3">
               <dt className="text-xs font-bold uppercase tracking-normal text-muted">Application ID</dt>
-              <dd className="mt-1 font-semibold text-ink">{applicationId}</dd>
+              <dd className="mt-1 font-semibold text-ink">{guidedApplication ? getApplicationReference(guidedApplication) : "Pending"}</dd>
             </div>
             <div className="rounded-md bg-white p-3">
               <dt className="text-xs font-bold uppercase tracking-normal text-muted">Who acts next</dt>
-              <dd className="mt-1 font-semibold text-ink">ABC College Scholarship Cell</dd>
+              <dd className="mt-1 font-semibold text-ink">{institution.cell}</dd>
             </div>
           </dl>
           <div className="mt-6">
-            <PrimaryButton onClick={() => router.push("/applications/css-2026")}>Track verification</PrimaryButton>
+            <PrimaryButton onClick={() => router.push(trackerHref)}>Track verification</PrimaryButton>
           </div>
         </section>
       </div>
@@ -68,7 +79,7 @@ export default function ApplyPage() {
 
   return (
     <div>
-      <PageHeader title="Central Sector Scholarship application">
+      <PageHeader title={`${applicationTitle} application`}>
         Most details are filled from your saved profile. Review each section before submission.
       </PageHeader>
 
@@ -77,7 +88,7 @@ export default function ApplyPage() {
       <section className="mt-6 rounded-lg border border-slate-200 bg-white p-6 shadow-sm state-pop" key={step}>
         <h2 className="text-2xl font-bold text-ink">{steps[step]}</h2>
         <p className="mt-2 text-sm leading-6 text-muted">
-          {step < 3 ? "Fields can be edited for this prototype. Saved values are marked as coming from your profile." : "Everything is ready for final submission."}
+          {step < 3 ? "Review the saved profile values before continuing." : "Everything is ready for final submission."}
         </p>
 
         {step < 3 ? (
@@ -128,7 +139,10 @@ export default function ApplyPage() {
           ) : (
             <button
               type="button"
-              onClick={() => setSubmitted(true)}
+              onClick={() => {
+                setSubmitted(true);
+                setDemoState("verification");
+              }}
               className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-900"
             >
               <Send size={18} />

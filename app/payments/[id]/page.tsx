@@ -1,60 +1,54 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useParams } from "next/navigation";
 import clsx from "clsx";
 import { CheckCircle2, Save } from "lucide-react";
+import { useAppState } from "@/components/AppContext";
 import { OwnershipRail } from "@/components/OwnershipRail";
-import { PrimaryButton } from "@/components/PrimaryButton";
+import { PrimaryButton, PrimaryLink } from "@/components/PrimaryButton";
 import { StatusBadge } from "@/components/StatusBadge";
-
-const failedRail = [
-  { actor: "Authority", state: "completed" as const, detail: "Done" },
-  { actor: "PFMS", state: "completed" as const, detail: "Done" },
-  { actor: "You", state: "student-action" as const, detail: "Action needed" },
-  { actor: "Bank", state: "blocked" as const, detail: "Blocked" }
-];
-
-const revalidationRail = [
-  { actor: "Authority", state: "completed" as const, detail: "Done" },
-  { actor: "You", state: "completed" as const, detail: "Done" },
-  { actor: "PFMS", state: "current" as const, detail: "Revalidating" },
-  { actor: "Bank", state: "current" as const, detail: "Checking" }
-];
+import { getApplicationOwnership, getDemoApplication, getGuidedDemoPaymentApplication, getGuidedDemoRenewalApplication, profile } from "@/lib/data";
 
 export default function PaymentTrackerPage() {
+  const params = useParams<{ id: string }>();
+  const { guidedDemoActive, guidedDemoOpportunityId, setDemoState } = useAppState();
   const [editing, setEditing] = useState(false);
   const [corrected, setCorrected] = useState(false);
+  const application = guidedDemoActive ? getGuidedDemoPaymentApplication(guidedDemoOpportunityId) : getDemoApplication(params.id) ?? getDemoApplication("css-payment-2026");
+  const renewalApplication = guidedDemoActive ? getGuidedDemoRenewalApplication(guidedDemoOpportunityId) : getDemoApplication("css-renewal-2027");
+  const ownership = application ? getApplicationOwnership(application, corrected ? "revalidation" : "bank-blocker") : null;
+
+  useEffect(() => {
+    if (application?.opportunityId === "aicte-pragati-scholarship") {
+      setDemoState(corrected ? "payment-corrected" : "payment-blocker");
+    }
+  }, [application?.opportunityId, corrected, setDemoState]);
 
   return (
     <div className="space-y-7">
       <section className="overflow-hidden rounded-[1.1rem] bg-white p-7 shadow-soft sm:p-8">
         <div className="grid gap-8 lg:grid-cols-[0.38fr_0.62fr] lg:items-center">
           <div>
-            <p className="text-sm font-bold uppercase tracking-normal text-muted">Scholarship payment</p>
-            <h1 className="mt-2 text-6xl font-bold tracking-normal text-ink">₹12,000</h1>
+            <p className="text-sm font-bold uppercase tracking-normal text-muted">{application?.title ?? "Scholarship"} payment</p>
+            <h1 className="mt-2 text-5xl font-bold tracking-normal text-ink sm:text-6xl">{application?.benefit ?? "Rs 12,000"}</h1>
             <div className="mt-5">
-              <StatusBadge tone={corrected ? "active" : "danger"}>{corrected ? "Revalidation pending" : "Bank validation failed"}</StatusBadge>
+              <StatusBadge tone={corrected ? "active" : "danger"}>{ownership?.status ?? (corrected ? "Revalidation pending" : "Bank validation failed")}</StatusBadge>
             </div>
             <p className="mt-5 max-w-md text-base leading-7 text-muted">
-              {corrected
-                ? "Your payment is back with PFMS and your bank for validation."
-                : "The scholarship has been approved and sent to PFMS. A beneficiary name mismatch is stopping payment credit."}
+              {ownership?.summary}
             </p>
           </div>
 
           <div className="space-y-4">
             <div>
               <p className="text-xs font-bold uppercase tracking-normal text-muted">Current owner</p>
-              <h2 className="mt-2 text-2xl font-bold text-ink">{corrected ? "PFMS and bank" : "You"}</h2>
+              <h2 className="mt-2 text-2xl font-bold text-ink">{ownership?.currentOwner}</h2>
               <p className={clsx("mt-1 text-sm font-semibold", corrected ? "text-primary" : "text-amber-900")}>
-                {corrected ? "Revalidating beneficiary details" : "Correct beneficiary name"}
+                {ownership?.applicantAction}
               </p>
             </div>
-            <OwnershipRail
-              items={corrected ? revalidationRail : failedRail}
-              evidence={corrected ? "Beneficiary name updated · revalidation requested" : "Beneficiary name mismatch · updated 27 Aug"}
-              className={corrected ? "bg-[#F5F6FF]" : "bg-[#FFF3DD]"}
-            />
+            {ownership ? <OwnershipRail items={ownership.rail} evidence={ownership.evidence} className={corrected ? "bg-[#F5F6FF]" : "bg-[#FFF3DD]"} /> : null}
           </div>
         </div>
       </section>
@@ -68,8 +62,8 @@ export default function PaymentTrackerPage() {
                 Correct the beneficiary name to restart validation.
               </p>
               <div className="mt-6 grid gap-4 sm:grid-cols-2">
-                <Compare label="Application" value="Aditi S." tone="danger" />
-                <Compare label="Bank record" value="Aditi Sharma" tone="success" />
+                <Compare label="Application" value="Ananya R." tone="danger" />
+                <Compare label="Bank record" value={profile.name} tone="success" />
               </div>
             </div>
 
@@ -85,6 +79,7 @@ export default function PaymentTrackerPage() {
                     className="space-y-4 state-pop"
                     onSubmit={(event) => {
                       event.preventDefault();
+                      setDemoState("payment-corrected");
                       setCorrected(true);
                       setEditing(false);
                     }}
@@ -92,7 +87,7 @@ export default function PaymentTrackerPage() {
                     <label className="block">
                       <span className="mb-2 block text-sm font-semibold text-ink">Corrected beneficiary name</span>
                       <input
-                        defaultValue="Aditi Sharma"
+                        defaultValue={profile.name}
                         className="h-11 w-full rounded-md border border-stone-300 bg-white px-3 text-sm text-ink focus:border-accent"
                       />
                     </label>
@@ -119,6 +114,11 @@ export default function PaymentTrackerPage() {
                 Your payment is back with PFMS and your bank for validation.
               </p>
               <p className="mt-5 text-xl font-bold text-ink">Nothing else required from you.</p>
+              {renewalApplication ? (
+                <div className="mt-6">
+                  <PrimaryLink href={renewalApplication.href}>Continue to renewal</PrimaryLink>
+                </div>
+              ) : null}
             </div>
             <dl className="rounded-[1rem] bg-[#E8F3EC] p-5 text-sm">
               <div>

@@ -1,4 +1,4 @@
-import { Scholarship, scholarships } from "@/lib/data";
+import { profile, Scholarship, scholarships } from "@/lib/data";
 
 export type MatchProfile = {
   education?: string;
@@ -150,16 +150,16 @@ export function evaluateScholarships(profile: MatchProfile) {
 export function sampleEligibilityProfile(): MatchProfile {
   return {
     education: "Undergraduate",
-    domicile: "Delhi",
-    income: "₹3.2 lakh",
+    domicile: profile.domicile,
+    income: profile.income.replace("/year", ""),
     score: "80-89%",
-    institution: "ABC College",
-    institutionType: "Government / aided",
-    course: "Economics",
-    yearOfStudy: "Year 1",
-    gender: "Female",
-    disability: "No",
-    minority: "No",
+    institution: profile.college,
+    institutionType: profile.institutionType,
+    course: profile.course,
+    yearOfStudy: profile.year,
+    gender: profile.gender,
+    disability: profile.disability,
+    minority: profile.minority,
     hosteller: "Day scholar",
     existingScholarship: "No",
     renewalStatus: "Fresh"
