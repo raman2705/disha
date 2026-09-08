@@ -228,11 +228,12 @@ export function Navigation() {
 const landingNav = [
   { href: "/opportunities", label: "Explore" },
   { href: "/assess", label: "Assess" },
-  { href: "/#how-it-works", label: "How it works" },
-  { href: "/#about", label: "About Disha" }
+  { href: "/#how-disha-works", label: "How Disha works" }
 ];
 
 function LandingHeader() {
+  const { setAssistantOpen } = useAppState();
+
   return (
     <header className="border-b border-stone-200/70 bg-paper">
       <div className="mx-auto flex min-h-[76px] max-w-5xl flex-wrap items-center justify-between gap-x-6 gap-y-3 px-5 py-3 sm:px-8">
@@ -240,7 +241,7 @@ function LandingHeader() {
           <DishaWordmark size="sm" />
         </Link>
 
-        <div className="flex flex-1 items-center justify-end gap-1 sm:gap-2">
+        <div className="flex min-w-0 flex-1 items-center justify-end gap-1 sm:gap-2">
           <nav aria-label="Primary" className="hidden items-center gap-1 md:flex">
             {landingNav.map((item) => (
               <Link
@@ -251,10 +252,19 @@ function LandingHeader() {
                 {item.label}
               </Link>
             ))}
+            {/* The assistant is part of the product, not a page, so this opens the drawer in place. */}
+            <button
+              type="button"
+              onClick={() => setAssistantOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-semibold text-slate-600 transition hover:text-ink"
+            >
+              <Sparkles size={15} aria-hidden="true" />
+              Disha Assistant
+            </button>
           </nav>
           <Link
             href="/opportunities"
-            className="inline-flex min-h-10 items-center rounded-full bg-primary px-4 text-sm font-bold text-white transition hover:bg-blue-700"
+            className="inline-flex min-h-10 shrink-0 items-center rounded-full bg-primary px-4 text-sm font-bold text-white transition hover:bg-blue-700"
           >
             Explore opportunities
           </Link>

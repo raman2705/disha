@@ -1,146 +1,150 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import clsx from "clsx";
-import { CheckCircle2, FileUp, RefreshCw } from "lucide-react";
+import { ArrowRight, Sparkles } from "lucide-react";
 import { InstitutionStatus } from "@/components/InstitutionStatus";
 import { PageHeader } from "@/components/PageHeader";
-import { PrimaryLink } from "@/components/PrimaryButton";
-import { RequirementChecklist } from "@/components/RequirementChecklist";
+import { BlockerCard } from "@/components/BlockerCard";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useAppState } from "@/components/AppContext";
 import { canonicalGuidedDemoOpportunityId, getGuidedDemoApplication, institution } from "@/lib/data";
+import { initialBlockerStatus, isBlocking, needsApplicantAction, type BlockerDefinition, type BlockerStatus } from "@/lib/blockers";
 import { buildOpportunityAssessmentResult, getOpportunity, sampleAssessmentResponses } from "@/lib/opportunities";
 
 export default function PreflightPage() {
-  const { guidedDemoActive, guidedDemoOpportunityId, setDemoState } = useAppState();
+  const { guidedDemoActive, guidedDemoOpportunityId, setDemoState, setAssistantOpen } = useAppState();
   const guidedApplication = getGuidedDemoApplication(guidedDemoOpportunityId);
-  const opportunity = getOpportunity(guidedApplication?.opportunityId ?? canonicalGuidedDemoOpportunityId) ?? getOpportunity(canonicalGuidedDemoOpportunityId);
-  const responses = opportunity ? sampleAssessmentResponses[opportunity.id] ?? {} : {};
-  const assessment = opportunity ? buildOpportunityAssessmentResult(opportunity, responses) : null;
-  const firstIssue = assessment?.gaps[0];
-  const secondIssue = assessment?.gaps[1] ?? assessment?.gaps[0];
-  const [documentAdded, setDocumentAdded] = useState(false);
-  const [certificateReplaced, setCertificateReplaced] = useState(false);
-  const studentIssues = Number(!documentAdded) + Number(!certificateReplaced);
-  const studentComplete = studentIssues === 0;
+  const opportunity =
+    getOpportunity(guidedApplication?.opportunityId ?? canonicalGuidedDemoOpportunityId) ?? getOpportunity(canonicalGuidedDemoOpportunityId);
+  const assessment = useMemo(
+    () => (opportunity ? buildOpportunityAssessmentResult(opportunity, sampleAssessmentResponses[opportunity.id] ?? {}) : null),
+    [opportunity]
+  );
+
+  const definitions = useMemo<BlockerDefinition[]>(() => buildBlockerDefinitions(assessment), [assessment]);
+  const [statuses, setStatuses] = useState<Record<string, BlockerStatus>>(() =>
+    Object.fromEntries(definitions.map((definition) => [definition.id, initialBlockerStatus]))
+  );
 
   useEffect(() => {
     if (guidedDemoActive) setDemoState("prepare");
   }, [guidedDemoActive, setDemoState]);
 
+  const statusFor = (id: string) => statuses[id] ?? initialBlockerStatus;
+  const outstanding = definitions.filter((definition) => isBlocking(statusFor(definition.id)));
+  const yours = outstanding.filter((definition) => needsApplicantAction(statusFor(definition.id)));
+  const waiting = outstanding.filter((definition) => !needsApplicantAction(statusFor(definition.id)));
+  const readyToApply = yours.length === 0 && waiting.length === 0;
+
+  const ready = [
+    "Aadhaar verified",
+    "Bank details complete",
+    "Academic record on file",
+    "Enrolment confirmed by your institution",
+    `${opportunity?.category ?? "Scheme"} eligibility passed`
+  ];
+
   return (
     <div>
-      <PageHeader title={guidedDemoActive ? `${opportunity?.name ?? "Selected opportunity"}: strengthen before you apply` : "Check before you apply"}>
-        {guidedDemoActive
-          ? "Requirements are grouped by who owns the work, so Ananya can see what she controls and what depends on someone else."
-          : "Requirements are grouped by who owns the work, so you can see what you control and what depends on someone else."}
+      <PageHeader title={guidedDemoActive ? `${opportunity?.name ?? "Selected opportunity"}: prepare before you apply` : "Check before you apply"}>
+        Four questions, answered on one page: what is ready, what is missing, what you need to do, and what Disha can
+        help with.
       </PageHeader>
 
-      <section className="mb-8 grid gap-6 lg:grid-cols-[0.85fr_1.15fr]">
-        <div className="rounded-xl bg-white p-6 shadow-soft ring-1 ring-stone-200 state-pop">
-          <p className="text-xs font-bold uppercase tracking-normal text-muted">Your part</p>
-          <div className="mt-3 flex flex-wrap items-end gap-3">
-            <span className={clsx("text-4xl font-bold", studentComplete ? "text-emerald-700" : "text-primary")}>
-              {studentComplete ? "100%" : `${Math.max(0, 100 - studentIssues * 25)}%`}
-            </span>
-            <StatusBadge tone={studentComplete ? "success" : "warning"}>{studentComplete ? "Complete" : `${studentIssues} action${studentIssues > 1 ? "s" : ""} left`}</StatusBadge>
-          </div>
-          <p className="mt-4 text-sm leading-6 text-muted">
-            {studentComplete
-              ? "You have finished your tasks. Remaining movement depends on external verification."
-              : guidedDemoActive
-                ? "Resolve student-owned gaps before submitting, then the application can move to institution verification."
-                : "Resolve your own tasks before submitting, then the application can move to institution verification."}
+      <section className="mb-7 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <SummaryTile label="What is ready" value={`${ready.length} items`} tone="success" body="Already on file and accepted." />
+        <SummaryTile
+          label="What is missing"
+          value={`${outstanding.length} item${outstanding.length === 1 ? "" : "s"}`}
+          tone={outstanding.length ? "warning" : "success"}
+          body={outstanding.length ? "Still blocking submission." : "Nothing outstanding."}
+        />
+        <SummaryTile
+          label="What you need to do"
+          value={`${yours.length} action${yours.length === 1 ? "" : "s"}`}
+          tone={yours.length ? "warning" : "success"}
+          body={yours.length ? "These are yours to resolve." : "No action needed from you right now."}
+        />
+        <SummaryTile
+          label="Waiting on others"
+          value={`${waiting.length} item${waiting.length === 1 ? "" : "s"}`}
+          tone={waiting.length ? "active" : "neutral"}
+          body={waiting.length ? "With a reviewer. Nothing for you to do." : "Nothing with a reviewer."}
+        />
+      </section>
+
+      <section className="mb-8 grid gap-6 lg:grid-cols-[0.8fr_1.2fr]">
+        <div className="rounded-xl bg-white p-6 shadow-soft ring-1 ring-stone-200">
+          <p className="text-xs font-black uppercase tracking-wide text-muted">Can you submit?</p>
+          <h2 className="mt-2 font-serif text-2xl font-black leading-tight text-ink">
+            {readyToApply
+              ? "Yes. Everything on your side is done."
+              : yours.length
+                ? `Not yet. ${yours.length} item${yours.length === 1 ? "" : "s"} need${yours.length === 1 ? "s" : ""} you.`
+                : "Not yet. Everything is with a reviewer."}
+          </h2>
+          <p className="mt-3 text-sm leading-6 text-muted">
+            {readyToApply
+              ? "Blockers were provided and accepted, so the application can be started."
+              : yours.length
+                ? "Provide the evidence each blocker names. It then goes to whoever owns the check."
+                : "You do not need to do anything while these sit with a reviewer."}
           </p>
-          <div className="mt-6 border-t border-stone-100 pt-5">
-            <p className="text-xs font-bold uppercase tracking-normal text-muted">Overall application status</p>
-            <h2 className="mt-2 text-xl font-bold text-ink">
-              {studentComplete ? "Waiting on 1 external action" : "Waiting on your tasks and 1 external action"}
-            </h2>
-            <p className="mt-2 text-sm leading-6 text-muted">
-              {guidedDemoActive ? `${institution.cell} still needs to complete verification after submission.` : `${institution.cell} still needs to complete scholarship verification.`}
-            </p>
-          </div>
-          <div className="mt-6">
-            {studentComplete ? (
-              <PrimaryLink href="/apply">Start application</PrimaryLink>
+          <div className="mt-5 flex flex-wrap gap-3">
+            {readyToApply ? (
+              <Link
+                href="/apply"
+                className="inline-flex min-h-11 items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-black text-white transition hover:bg-blue-700"
+              >
+                Start application
+                <ArrowRight size={17} aria-hidden="true" />
+              </Link>
             ) : (
-              <span className="inline-flex min-h-11 items-center rounded-md bg-stone-200 px-4 py-2 text-sm font-semibold text-stone-500">
+              <span className="inline-flex min-h-11 items-center rounded-md bg-stone-200 px-4 py-2 text-sm font-bold text-stone-500">
                 Start application
               </span>
             )}
+            <button
+              type="button"
+              onClick={() => setAssistantOpen(true)}
+              className="inline-flex min-h-11 items-center gap-2 rounded-md bg-white px-4 py-2 text-sm font-bold text-primary ring-1 ring-stone-200 transition hover:bg-[#EEF2FF]"
+            >
+              <Sparkles size={16} aria-hidden="true" />
+              What can Disha help with?
+            </button>
           </div>
         </div>
 
-        <div className="grid gap-5 md:grid-cols-3">
-          <OwnerGroup
-            title="Your tasks"
-            items={[
-              { label: "Aadhaar verified", state: "done" },
-              { label: "Bank details complete", state: "done" },
-              { label: "Academic details complete", state: "done" },
-              { label: certificateReplaced ? "Income certificate refreshed" : "Refresh current income certificate", state: certificateReplaced ? "done" : "warning" },
-              { label: documentAdded ? "Legal name checked against bank record" : "Confirm legal name matches bank record", state: documentAdded ? "done" : "missing" }
-            ]}
-          />
-          <OwnerGroup
-            title="Your institution"
-            items={[
-              { label: "Enrolment confirmed", state: "done" },
-              { label: guidedDemoActive ? "Opportunity verification pending" : "Scholarship verification pending", state: "pending" }
-            ]}
-          />
-          <OwnerGroup
-            title="System checks"
-            items={[
-              { label: "Profile verified", state: "done" },
-              { label: guidedDemoActive ? `${opportunity?.category ?? "Opportunity"} eligibility passed` : "Scheme eligibility passed", state: "done" }
-            ]}
-          />
-        </div>
-      </section>
-
-      <section className="mb-8 rounded-xl bg-white p-6 shadow-sm ring-1 ring-stone-200">
-        <h2 className="text-xl font-bold text-ink">What happens outside your application?</h2>
-        <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">
-          {guidedDemoActive
-            ? `Your institution also needs to complete 1 action. ${institution.name} must confirm verification before the application can proceed.`
-            : `Your institution also needs to complete 1 action. ${institution.name} must confirm scholarship verification before the scholarship can proceed.`}
-        </p>
-        <div className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
-          <p>
-            <span className="font-semibold text-ink">Status:</span> Waiting for institution
-          </p>
-          <p>
-            <span className="font-semibold text-ink">Student action:</span> No action required yet
+        <div className="rounded-xl bg-white p-6 shadow-sm ring-1 ring-stone-200">
+          <h2 className="text-lg font-black text-ink">What is ready</h2>
+          <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+            {ready.map((item) => (
+              <li key={item} className="flex items-start gap-2 text-sm leading-6 text-slate-700">
+                <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-600" aria-hidden="true" />
+                {item}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-4 border-t border-stone-100 pt-3 text-sm leading-6 text-muted">
+            {institution.cell} still owns verification after submission, whatever you finish here.
           </p>
         </div>
       </section>
 
+      <h2 className="mb-3 text-lg font-black text-ink">
+        {outstanding.length ? `What is missing (${outstanding.length})` : "Nothing is missing"}
+      </h2>
       <div className="grid gap-5 lg:grid-cols-2">
-          <IssueCard
-            resolved={certificateReplaced}
-            severity="Required"
-          title={guidedDemoActive ? "Refresh current income certificate" : "Income certificate may expire during verification"}
-          explanation={guidedDemoActive ? firstIssue?.label ?? "Your current income proof should be refreshed before final submission." : "Your income certificate expires shortly after the application deadline. If verification happens later, your institute may ask for a newer certificate."}
-          why={guidedDemoActive ? firstIssue?.suggestion ?? "Refresh the supporting detail if available." : "Replace it with a newer certificate if available."}
-          actor="You"
-          cta={guidedDemoActive ? "Refresh certificate" : "Replace certificate"}
-          icon={<RefreshCw size={18} />}
-          onResolve={() => setCertificateReplaced(true)}
-        />
-        <IssueCard
-            resolved={documentAdded}
-            severity="Warning"
-          title={guidedDemoActive ? "Confirm legal name matches bank record" : "Institute enrolment proof missing"}
-          explanation={guidedDemoActive ? secondIssue?.label ?? "Confirm the full legal name matches the bank record before submission." : `Add your copy of current enrolment proof so ${institution.name} can complete verification without returning the application.`}
-          why={guidedDemoActive ? secondIssue?.suggestion ?? "Use the same legal name everywhere." : `Your upload is the part you control. ${institution.name} still owns the scholarship verification action after submission.`}
-          actor="You"
-          cta={guidedDemoActive ? "Confirm name" : "Add document"}
-          icon={<FileUp size={18} />}
-          onResolve={() => setDocumentAdded(true)}
-        />
+        {definitions.map((definition) => (
+          <BlockerCard
+            key={definition.id}
+            definition={definition}
+            status={statusFor(definition.id)}
+            onChange={(status) => setStatuses((current) => ({ ...current, [definition.id]: status }))}
+          />
+        ))}
       </div>
 
       <div className="mt-8">
@@ -150,78 +154,64 @@ export default function PreflightPage() {
   );
 }
 
-function OwnerGroup({ title, items }: { title: string; items: { label: string; state: "done" | "warning" | "missing" | "pending" }[] }) {
-  return (
-    <section className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-stone-200">
-      <h2 className="text-lg font-bold text-ink">{title}</h2>
-      <div className="mt-4">
-        <RequirementChecklist items={items} />
-      </div>
-    </section>
-  );
-}
-
-function IssueCard({
-  resolved,
-  severity,
-  title,
-  explanation,
-  why,
-  actor,
-  cta,
-  icon,
-  onResolve
+function SummaryTile({
+  label,
+  value,
+  tone,
+  body
 }: {
-  resolved: boolean;
-  severity: string;
-  title: string;
-  explanation: string;
-  why: string;
-  actor: string;
-  cta: string;
-  icon: React.ReactNode;
-  onResolve: () => void;
+  label: string;
+  value: string;
+  tone: "success" | "warning" | "active" | "neutral";
+  body: string;
 }) {
   return (
-    <article
-      className={clsx(
-        "rounded-xl bg-white p-5 shadow-sm ring-1 transition state-pop",
-        resolved ? "ring-emerald-200" : severity === "Required" ? "ring-red-200" : "ring-amber-200"
-      )}
-    >
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <StatusBadge tone={resolved ? "success" : severity === "Required" ? "danger" : "warning"}>
-            {resolved ? "Resolved" : severity}
-          </StatusBadge>
-          <h2 className="mt-3 text-xl font-bold text-ink">{resolved ? title.replace("missing", "added").replace("may expire", "updated") : title}</h2>
-        </div>
-        {resolved ? <CheckCircle2 className="text-emerald-700" size={26} /> : null}
-      </div>
-      <p className="mt-3 text-sm leading-6 text-slate-700">{resolved ? "This student-owned issue is no longer blocking your part." : explanation}</p>
-      <p className="mt-4 rounded-md bg-stone-50 p-3 text-sm leading-6 text-slate-700">
-        <span className="font-semibold text-ink">{severity === "Required" ? "Why this matters:" : "Recommended action:"}</span> {why}
+    <article className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-stone-200">
+      <p className="text-xs font-black uppercase tracking-wide text-muted">{label}</p>
+      <p className={clsx("mt-2 text-xl font-black", tone === "success" ? "text-emerald-700" : tone === "warning" ? "text-amber-800" : tone === "active" ? "text-primary" : "text-muted")}>
+        {value}
       </p>
-      <p className="mt-4 text-sm">
-        <span className="font-semibold text-ink">Who needs to act:</span> {resolved ? "No student action needed" : actor}
-      </p>
-      <div className="mt-5">
-        {resolved ? (
-          <span className="inline-flex min-h-11 items-center gap-2 rounded-md bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-800 ring-1 ring-emerald-200">
-            <CheckCircle2 size={18} />
-            Completed
-          </span>
-        ) : (
-          <button
-            type="button"
-            onClick={onResolve}
-            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-900"
-          >
-            {icon}
-            {cta}
-          </button>
-        )}
+      <p className="mt-1 text-xs leading-5 text-muted">{body}</p>
+      <div className="mt-2">
+        <StatusBadge tone={tone}>{tone === "success" ? "Clear" : tone === "warning" ? "Needs you" : tone === "active" ? "With reviewer" : "None"}</StatusBadge>
       </div>
     </article>
   );
+}
+
+/**
+ * The blockers shown on Prepare. Titles and rationale come from the canonical assessment's gaps
+ * where it has them, so this page cannot describe a different problem from the assessment page.
+ */
+function buildBlockerDefinitions(assessment: ReturnType<typeof buildOpportunityAssessmentResult> | null): BlockerDefinition[] {
+  const gap = (index: number) => assessment?.gaps[index];
+
+  return [
+    {
+      id: "income-certificate",
+      title: "Current income certificate",
+      severity: "Required",
+      whyItMatters:
+        gap(0)?.suggestion ??
+        "Verification often happens weeks after submission. A certificate that expires in between gets the application returned.",
+      evidencePrompt: "Which income certificate can you provide?",
+      evidenceOptions: ["Issued this year", "Issued last year", "Applied for, not yet issued"],
+      owner: "You",
+      reviewer: institution.cell,
+      reviewCheck: "They check the issue date against the scheme's validity window."
+    },
+    {
+      id: "name-match",
+      title: "Legal name matches the bank record",
+      severity: "Required",
+      whyItMatters:
+        gap(1)?.suggestion ??
+        "A name mismatch is the most common reason an approved scholarship never reaches the account.",
+      evidencePrompt: "How does your name appear on the bank record?",
+      evidenceOptions: ["Exactly as on Aadhaar", "Initials differ", "Surname order differs"],
+      owner: "You",
+      reviewer: "Bank record check",
+      reviewCheck: "The account name is compared with the name on your identity record."
+    }
+  ];
 }

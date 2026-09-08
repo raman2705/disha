@@ -34,6 +34,8 @@ require.extensions[".ts"] = function loadTs(module, filename) {
 const { profile } = require("../lib/data.ts");
 const { assistantReply, buildOpportunityAssessmentResult, getOpportunity, sampleAssessmentResponses } = require("../lib/opportunities.ts");
 const { answerFromDishaContext } = require("../lib/assistant.ts");
+const { initialBlockerStatus, nextBlockerStatus, blockerOwner, isBlocking, needsApplicantAction } = require("../lib/blockers.ts");
+const { walkthroughSteps, walkthroughStepForPath } = require("../lib/walkthrough.ts");
 const { buildDishaContext } = require("../lib/dishaContext.ts");
 const {
   applicantFromCoreProfile,
@@ -578,4 +580,95 @@ test("an ineligible applicant is told the blocker outranks a strong alignment", 
   assert.equal(result.eligibility.status, "ineligible");
   assert.ok(result.eligibility.blockers.includes("Woman student"));
   assert.ok(result.initialFit.reasons[0].startsWith("A hard requirement does not pass"));
+});
+
+// ---------------------------------------------------------------------------
+// Blocker lifecycle and the guided walkthrough.
+// ---------------------------------------------------------------------------
+
+const incomeBlocker = {
+  id: "income-certificate",
+  title: "Current income certificate",
+  severity: "Required",
+  whyItMatters: "Verification happens later than submission.",
+  evidencePrompt: "Which income certificate can you provide?",
+  evidenceOptions: ["Issued this year", "Issued last year"],
+  owner: "You",
+  reviewer: "Scholarship Cell",
+  reviewCheck: "They check the issue date."
+};
+
+test("a blocker cannot be resolved by clicking it", () => {
+  let status = initialBlockerStatus;
+  assert.equal(status.state, "missing");
+
+  // None of the later events do anything from "missing".
+  assert.equal(nextBlockerStatus(status, { type: "review_passed" }).state, "missing");
+  assert.equal(nextBlockerStatus(status, { type: "submit_for_review" }).state, "missing");
+  assert.equal(nextBlockerStatus(status, { type: "provide", evidence: "" }).state, "missing");
+});
+
+test("a blocker walks the full lifecycle in order", () => {
+  let status = initialBlockerStatus;
+  status = nextBlockerStatus(status, { type: "start" });
+  assert.equal(status.state, "action_needed");
+
+  status = nextBlockerStatus(status, { type: "provide", evidence: "Issued this year" });
+  assert.equal(status.state, "provided");
+  assert.equal(status.evidence, "Issued this year");
+  assert.ok(isBlocking(status), "provided is not resolved");
+  assert.ok(!needsApplicantAction(status), "provided is no longer the applicant's move");
+
+  // Cannot jump straight from provided to resolved.
+  assert.equal(nextBlockerStatus(status, { type: "review_passed" }).state, "provided");
+
+  status = nextBlockerStatus(status, { type: "submit_for_review" });
+  assert.equal(status.state, "under_review");
+  assert.equal(blockerOwner(incomeBlocker, status), "Scholarship Cell", "review is owned by the reviewer");
+
+  status = nextBlockerStatus(status, { type: "review_passed" });
+  assert.equal(status.state, "resolved");
+  assert.ok(!isBlocking(status));
+});
+
+test("a returned review sends the blocker back to the applicant with a reason", () => {
+  let status = nextBlockerStatus(nextBlockerStatus(initialBlockerStatus, { type: "start" }), { type: "provide", evidence: "Issued last year" });
+  status = nextBlockerStatus(status, { type: "submit_for_review" });
+  status = nextBlockerStatus(status, { type: "review_returned", reason: "Certificate expires before verification." });
+
+  assert.equal(status.state, "action_needed");
+  assert.equal(status.returnedReason, "Certificate expires before verification.");
+  assert.equal(status.evidence, "Issued last year", "what they already provided is not thrown away");
+  assert.ok(needsApplicantAction(status));
+  assert.equal(blockerOwner(incomeBlocker, status), "You");
+});
+
+test("the walkthrough covers the whole journey and matches its own routes", () => {
+  assert.deepEqual(
+    walkthroughSteps.map((step) => step.stage),
+    ["Discover", "Assess", "Prepare", "Apply", "Verification", "Payment", "Renewal"]
+  );
+
+  const routes = {
+    "/demo": "Discover",
+    "/opportunities/aicte-pragati-scholarship/assess": "Assess",
+    "/preflight": "Prepare",
+    "/apply": "Apply",
+    "/applications/pragati-readiness-2026": "Verification",
+    "/payments/pragati-payment-2026": "Payment",
+    "/renewal": "Renewal"
+  };
+  for (const [pathname, stage] of Object.entries(routes)) {
+    assert.equal(walkthroughStepForPath(pathname)?.step.stage, stage, `${pathname} should be the ${stage} step`);
+  }
+
+  // Every step tells the visitor what to do, and every link lands on a later step.
+  walkthroughSteps.forEach((step, index) => {
+    assert.ok(step.action.length > 10, `${step.id} needs an action`);
+    assert.ok(step.body.length > 20, `${step.id} needs a reason it matters`);
+    if (step.href) {
+      const target = walkthroughStepForPath(step.href);
+      assert.ok(target && target.index > index, `${step.id} should link forward, not backward`);
+    }
+  });
 });

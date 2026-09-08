@@ -18,6 +18,14 @@ const quickStarts = [
   { label: "Government programs", category: "Government Schemes" }
 ];
 
+const stages = [
+  { label: "Discover", body: "Find opportunities worth your time.", detail: "Ranked by whether preparing is worth it, not by how many exist." },
+  { label: "Assess", body: "Eligibility and fit, kept separate.", detail: "Hard rules first, then how competitive the application would be." },
+  { label: "Prepare", body: "See what is ready and what is missing.", detail: "Each blocker names the evidence it needs and who checks it." },
+  { label: "Apply", body: "Submit with what Disha already holds.", detail: "A review of prefilled answers rather than a retyping exercise." },
+  { label: "Track", body: "Know who owns the next move.", detail: "Through verification, payment and renewal, including why things stall." }
+];
+
 const journey = [
   { id: "discover", label: "Discover", body: "Find relevant opportunities" },
   { id: "assess", label: "Assess", body: "Understand your fit" },
@@ -43,9 +51,12 @@ export default function LandingPage() {
     router.push("/demo");
   };
 
+  // No 100vw anywhere on this page: vw units include the scrollbar gutter, which made the page
+  // scroll sideways by a few pixels on desktops with classic scrollbars. The paper background
+  // already comes from body, so the old full-bleed wrapper was not needed for it.
   return (
-    <div className="relative left-1/2 -mt-12 w-screen -translate-x-1/2 bg-paper sm:-mt-14">
-      <div className="mx-auto max-w-5xl px-5 pb-20 sm:px-8">
+    <div className="-mt-12 sm:-mt-14">
+      <div className="mx-auto max-w-5xl pb-20">
         <section className="pt-12 sm:pt-16 lg:pt-20">
           <DishaWordmark size="lg" settle />
 
@@ -83,6 +94,21 @@ export default function LandingPage() {
             </div>
           </form>
 
+          <div className="landing-rise landing-rise-3 mt-4">
+            <button
+              type="button"
+              onClick={walkThroughDemo}
+              className="inline-flex min-h-11 items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-bold text-ink shadow-sm ring-1 ring-stone-300 transition hover:bg-white hover:ring-stone-400"
+            >
+              <CompassMark size={17} className="text-ink" />
+              See a sample journey
+              <ArrowRight size={15} aria-hidden="true" />
+            </button>
+            <p className="mt-2 text-xs leading-5 text-muted">
+              Walks through one student's full path, from discovery to renewal. No sign-up.
+            </p>
+          </div>
+
           <div className="landing-rise landing-rise-3 mt-5 flex flex-wrap items-center gap-2">
             {quickStarts.map((item) => (
               <Link
@@ -96,7 +122,7 @@ export default function LandingPage() {
           </div>
         </section>
 
-        <section id="how-it-works" className="landing-rise landing-rise-4 scroll-mt-24 pt-16 sm:pt-20">
+        <section id="how-it-works" className="landing-rise landing-rise-4 pt-16 sm:pt-20">
           <div className="relative">
             <span
               aria-hidden="true"
@@ -139,6 +165,28 @@ export default function LandingPage() {
               })}
             </ol>
           </div>
+        </section>
+
+        <section id="how-disha-works" className="landing-rise landing-rise-5 scroll-mt-8 pt-16 sm:pt-20">
+          <h2 className="font-serif text-3xl font-black leading-tight text-ink">How Disha works</h2>
+          <p className="mt-2 max-w-2xl text-base leading-7 text-slate-700">
+            Five stages, one thread. Most applicants lose an opportunity somewhere between deciding to apply and
+            getting paid, so Disha stays with the application the whole way.
+          </p>
+          <ol className="mt-7 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            {stages.map((stage, index) => (
+              <li key={stage.label} className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-stone-200">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#DDE3FA] text-xs font-black text-primary">
+                    {index + 1}
+                  </span>
+                  <h3 className="text-sm font-black text-ink">{stage.label}</h3>
+                </div>
+                <p className="mt-2.5 text-sm leading-6 text-slate-700">{stage.body}</p>
+                <p className="mt-2 text-xs leading-5 text-muted">{stage.detail}</p>
+              </li>
+            ))}
+          </ol>
         </section>
 
         <section aria-labelledby="sample-heading" className="landing-rise landing-rise-5 pt-16 sm:pt-20">
@@ -214,12 +262,12 @@ export default function LandingPage() {
           </div>
         </section>
 
-        <section id="about" className="landing-rise landing-rise-5 scroll-mt-24 border-t border-stone-200 pt-12 sm:pt-14">
-          <div className="flex max-w-2xl items-start gap-5">
-            <CompassMark size={38} className="mt-1 hidden text-ink sm:block" />
+        <footer id="about" className="landing-rise landing-rise-5 mt-16 scroll-mt-8 border-t border-stone-200 pt-8 sm:mt-20">
+          <div className="flex max-w-2xl items-start gap-4">
+            <CompassMark size={32} className="mt-0.5 hidden text-ink sm:block" />
             <div>
-              <h2 className="font-serif text-2xl font-black text-ink">About Disha</h2>
-              <p className="mt-3 text-base leading-7 text-slate-700">
+              <h2 className="text-sm font-black uppercase tracking-wide text-muted">About Disha</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-700">
                 Disha means direction. Searching is the easy part; the hard part is knowing whether an opportunity is
                 worth your time and what to fix before you apply. Disha brings opportunities together, separates formal
                 eligibility from the evidence that selectors actually weigh, and stays with you through the steps that
@@ -227,7 +275,7 @@ export default function LandingPage() {
               </p>
             </div>
           </div>
-        </section>
+        </footer>
       </div>
     </div>
   );

@@ -15,6 +15,8 @@ type AppContextValue = {
   setNormalAssessment: (draft: NormalAssessmentDraft) => void;
   guidedDemoActive: boolean;
   guidedDemoCollapsed: boolean;
+  walkthroughDismissed: boolean;
+  dismissWalkthrough: () => void;
   guidedDemoOpportunityId: string;
   setGuidedDemoOpportunityId: (opportunityId: string) => void;
   setGuidedDemoCollapsed: (collapsed: boolean) => void;
@@ -32,6 +34,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [normalAssessment, setNormalAssessmentValue] = useState<NormalAssessmentDraft>(defaultNormalAssessment);
   const [guidedDemoActive, setGuidedDemoActive] = useState(false);
   const [guidedDemoCollapsed, setGuidedDemoCollapsedValue] = useState(false);
+  const [walkthroughDismissed, setWalkthroughDismissed] = useState(false);
   const [guidedDemoOpportunityId, setGuidedDemoOpportunityIdValue] = useState(canonicalGuidedDemoOpportunityId);
   const [language, setLanguageValue] = useState<Language>("en");
 
@@ -39,6 +42,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setDemoStateValue(normalizeDemoState(window.sessionStorage.getItem("nsp-demo-state")));
     setGuidedDemoActive(window.sessionStorage.getItem("disha-guided-demo") === "true");
     setGuidedDemoCollapsedValue(window.sessionStorage.getItem("disha-guided-demo-collapsed") === "true");
+    setWalkthroughDismissed(window.sessionStorage.getItem("disha-walkthrough-dismissed") === "true");
     setGuidedDemoOpportunityIdValue(window.sessionStorage.getItem("disha-guided-demo-opportunity") ?? canonicalGuidedDemoOpportunityId);
     const savedNormalAssessment = window.localStorage.getItem("disha-normal-assessment");
     if (savedNormalAssessment) {
@@ -67,8 +71,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     window.localStorage.setItem("disha-normal-assessment", JSON.stringify(draft));
   }, []);
 
+  const dismissWalkthrough = useCallback(() => {
+    setWalkthroughDismissed(true);
+    window.sessionStorage.setItem("disha-walkthrough-dismissed", "true");
+  }, []);
+
   const startGuidedDemo = useCallback(() => {
     setGuidedDemoActive(true);
+    setWalkthroughDismissed(false);
+    window.sessionStorage.removeItem("disha-walkthrough-dismissed");
     setGuidedDemoCollapsedValue(false);
     setGuidedDemoOpportunityIdValue(canonicalGuidedDemoOpportunityId);
     setDemoStateValue("discover");
@@ -127,6 +138,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setNormalAssessment,
       guidedDemoActive,
       guidedDemoCollapsed,
+      walkthroughDismissed,
+      dismissWalkthrough,
       guidedDemoOpportunityId,
       setGuidedDemoOpportunityId,
       setGuidedDemoCollapsed,
@@ -135,7 +148,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       language,
       setLanguage
     }),
-    [demoState, assistantOpen, normalAssessment, guidedDemoActive, guidedDemoCollapsed, guidedDemoOpportunityId, language]
+    [demoState, assistantOpen, normalAssessment, guidedDemoActive, guidedDemoCollapsed, walkthroughDismissed, guidedDemoOpportunityId, language]
   );
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

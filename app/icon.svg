@@ -1,17 +1,19 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
   <rect width="64" height="64" rx="14" fill="#16233B"/>
-  <circle cx="32" cy="32" r="20" fill="none" stroke="#FBF7F1" stroke-opacity="0.32" stroke-width="2.4"/>
+  <circle cx="32" cy="32" r="21.5" fill="none" stroke="#FBF7F1" stroke-opacity="0.85" stroke-width="2.8"/>
+  <circle cx="32" cy="32" r="16.4" fill="none" stroke="#FBF7F1" stroke-opacity="0.18" stroke-width="1.6"/>
   <g stroke="#FBF7F1" stroke-linecap="round">
-    <path d="M32 7v5.4" stroke-width="3.6" stroke-opacity="0.85"/>
-    <g stroke-width="2.4" stroke-opacity="0.45">
-      <path d="M32 51.6V56"/>
-      <path d="M8 32h4.4"/>
-      <path d="M51.6 32H56"/>
+    <path d="M32 5.4v5" stroke-width="3.6" stroke-opacity="0.95"/>
+    <g stroke-width="2.4" stroke-opacity="0.42">
+      <path d="M32 53.6v5"/>
+      <path d="M5.4 32h5"/>
+      <path d="M53.6 32h5"/>
     </g>
   </g>
-  <g transform="rotate(-33 32 32)">
-    <path d="M32 13.6 36.4 32 27.6 32Z" fill="#D97C68"/>
-    <path d="M32 50.4 36.4 32 27.6 32Z" fill="#FBF7F1" fill-opacity="0.55"/>
+  <g transform="rotate(-38 32 32)">
+    <path d="M32 11.4 37.6 32 32 35.2 26.4 32Z" fill="#D97C68"/>
+    <path d="M32 52.6 37.6 32 32 28.8 26.4 32Z" fill="#FBF7F1" fill-opacity="0.6"/>
   </g>
-  <circle cx="32" cy="32" r="2.7" fill="#FBF7F1"/>
+  <circle cx="32" cy="32" r="3.6" fill="#FBF7F1"/>
+  <circle cx="32" cy="32" r="1.5" fill="#16233B"/>
 </svg>

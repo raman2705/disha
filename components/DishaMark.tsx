@@ -23,23 +23,29 @@ export function CompassMark({ size = 40, settle = false, className }: { size?: n
       focusable="false"
       className={clsx("shrink-0", className)}
     >
-      <circle cx="20" cy="20" r="17.1" stroke="currentColor" strokeOpacity="0.22" strokeWidth="1.5" />
+      {/* Double bezel: a weighted outer ring with a fine inner ring, so the mark reads as an
+          instrument rather than a circle with a pointer in it. */}
+      <circle cx="20" cy="20" r="17.4" stroke="currentColor" strokeOpacity="0.9" strokeWidth="1.9" />
+      <circle cx="20" cy="20" r="13.4" stroke="currentColor" strokeOpacity="0.16" strokeWidth="1" />
       <g stroke="currentColor" strokeLinecap="round">
         {/* North is weighted so the mark orients itself rather than reading as a plain target. */}
-        <path d="M20 0.9v4.6" strokeWidth="2.4" strokeOpacity="0.75" />
-        <g strokeWidth="1.5" strokeOpacity="0.34">
-          <path d="M20 34.8v3.4" />
-          <path d="M1.8 20h3.4" />
-          <path d="M34.8 20h3.4" />
+        <path d="M20 2.6v4.3" strokeWidth="2.6" strokeOpacity="0.95" />
+        <g strokeWidth="1.5" strokeOpacity="0.4">
+          <path d="M20 33.1v4.3" />
+          <path d="M2.6 20h4.3" />
+          <path d="M33.1 20h4.3" />
         </g>
       </g>
-      <g transform="rotate(-33 20 20)">
+      <g transform="rotate(-38 20 20)">
         <g className={settle ? "disha-needle" : undefined}>
-          <path d="M20 6.4 23.1 20 16.9 20Z" fill="#D97C68" />
-          <path d="M20 33.6 23.1 20 16.9 20Z" fill="currentColor" fillOpacity="0.34" />
+          {/* A slim kite rather than a stick: the lit half carries the accent, the trailing half
+              is the counterweight, and the waist keeps both halves legible at favicon size. */}
+          <path d="M20 5.6 24 19.1 20 21.2 16 19.1Z" fill="#D97C68" />
+          <path d="M20 34.4 24 20.9 20 18.8 16 20.9Z" fill="currentColor" fillOpacity="0.42" />
         </g>
       </g>
-      <circle cx="20" cy="20" r="1.9" fill="currentColor" />
+      <circle cx="20" cy="20" r="2.5" fill="currentColor" />
+      <circle cx="20" cy="20" r="1" fill="#FBF7F1" />
     </svg>
   );
 }

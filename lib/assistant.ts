@@ -197,7 +197,10 @@ function fitAnswer(assessment: NonNullable<DishaContext["assessmentResult"]>, op
   const reason = assessment.initialFit.reasons[0] ?? assessment.overallAssessment;
 
   if (assessment.depth === "deep" && assessment.competitiveness.score !== null) {
-    return `Your saved assessment for ${opportunityName} says: ${eligibility}, ${fit}. The deeper assessment puts competitiveness at ${assessment.competitiveness.score}/100 (${assessment.competitiveness.band}), covering ${assessment.competitiveness.assessedWeightPercent}% of known selection weight. ${reason}`;
+    // Once the deeper assessment has a defensible score, that is the answer. Repeating an unknown
+    // initial-fit band next to it would read as a contradiction rather than as two tiers.
+    const initial = assessment.initialFit.band === "unknown" ? "" : ` The initial read was ${assessment.initialFit.band} fit.`;
+    return `Your saved assessment for ${opportunityName} says: ${eligibility}. The deeper assessment puts competitiveness at ${assessment.competitiveness.score}/100 (${assessment.competitiveness.band}), covering ${assessment.competitiveness.assessedWeightPercent}% of known selection weight.${initial} ${reason}`;
   }
 
   const invitation =
