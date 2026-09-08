@@ -156,6 +156,23 @@ export function hydrateNormalAssessment(raw: unknown): NormalAssessmentDraft {
 }
 
 /**
+ * Reconciles the /assess form's local working copy with the stored draft.
+ *
+ * AppProvider reads localStorage in an effect, so on a hard load the form mounts *before* the
+ * stored draft exists and its initial snapshot is the empty default — which is why a returning
+ * visitor saw "Pending" on reload while /path and /applications showed the saved assessment.
+ * Mirror the stored draft into the form until the visitor edits it; once they have, the local
+ * copy wins and later context updates must not clobber the edit in progress.
+ */
+export function resolveWorkingDraft(
+  working: NormalAssessmentDraft,
+  stored: NormalAssessmentDraft,
+  edited: boolean
+): NormalAssessmentDraft {
+  return edited || working === stored ? working : stored;
+}
+
+/**
  * Structural check against the canonical `AssessmentResult` contract. Only the fields the UI and
  * the assistant actually read are asserted, so adding an optional field does not invalidate
  * previously persisted results.

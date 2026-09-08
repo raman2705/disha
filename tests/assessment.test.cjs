@@ -38,7 +38,8 @@ const {
   defaultNormalAssessment,
   finalizeNormalAssessment,
   hydrateNormalAssessment,
-  isCanonicalAssessmentResult
+  isCanonicalAssessmentResult,
+  resolveWorkingDraft
 } = require("../lib/normalAssessment.ts");
 
 // The draft shape persisted to localStorage before the competitiveness refactor.
@@ -331,4 +332,35 @@ test("isCanonicalAssessmentResult rejects a result missing competitiveness field
   assert.equal(isCanonicalAssessmentResult({ ...assessmentResult, competitiveness: { ...assessmentResult.competitiveness, band: "Moderate" } }), false);
   assert.equal(isCanonicalAssessmentResult({ ...assessmentResult, eligibility: { status: "Pass", summary: "", basis: [] } }), false);
   assert.equal(isCanonicalAssessmentResult({ ...assessmentResult, recommendationKey: "Worth pursuing" }), false);
+});
+
+test("/assess adopts the hydrated draft on a hard load without clobbering edits", () => {
+  const opportunity = getOpportunity("aicte-pragati-scholarship");
+  const stored = finalizeNormalAssessment({ ...defaultNormalAssessment, name: "Ananya", institution: "PES University", programme: "B.Tech CSE" }, opportunity);
+
+  // Hard load: the form mounts before AppProvider has read localStorage, so its first snapshot is
+  // the empty default. The mount pass is a no-op, then the hydrated draft arrives and is adopted.
+  let working = defaultNormalAssessment;
+  working = resolveWorkingDraft(working, defaultNormalAssessment, false);
+  assert.equal(working, defaultNormalAssessment);
+  working = resolveWorkingDraft(working, stored, false);
+  assert.equal(working, stored);
+  assert.equal(working.assessmentResult.opportunityId, "aicte-pragati-scholarship");
+
+  // Client-side nav: the form already mounts with the hydrated draft and nothing changes.
+  assert.equal(resolveWorkingDraft(stored, stored, false), stored);
+});
+
+test("/assess keeps an in-progress edit over a later stored draft", () => {
+  const opportunity = getOpportunity("aicte-pragati-scholarship");
+  const stored = finalizeNormalAssessment({ ...defaultNormalAssessment, name: "Ananya", institution: "PES University", programme: "B.Tech CSE" }, opportunity);
+  const beingTyped = { ...defaultNormalAssessment, name: "Ana" };
+
+  // Once the visitor has typed, neither hydration nor a chat-driven recalculation may overwrite it.
+  assert.equal(resolveWorkingDraft(beingTyped, stored, true), beingTyped);
+  assert.equal(resolveWorkingDraft(beingTyped, defaultNormalAssessment, true), beingTyped);
+
+  // An untouched form still mirrors a chat-driven update so the panel stays in step.
+  const recalculated = finalizeNormalAssessment({ ...stored, leadership: "led significant teams/programs" }, opportunity);
+  assert.equal(resolveWorkingDraft(stored, recalculated, false), recalculated);
 });

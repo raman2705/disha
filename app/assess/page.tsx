@@ -1,13 +1,13 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowRight, CheckCircle2, FileText, Sparkles } from "lucide-react";
 import clsx from "clsx";
 import { PageHeader } from "@/components/PageHeader";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useAppState, type NormalAssessmentDraft } from "@/components/AppContext";
 import { opportunities } from "@/lib/opportunities";
-import { finalizeNormalAssessment } from "@/lib/normalAssessment";
+import { finalizeNormalAssessment, resolveWorkingDraft } from "@/lib/normalAssessment";
 
 const opportunityChoices = opportunities.filter((opportunity) => ["Scholarships", "Fellowships", "Research Grants", "Startup Funding", "Government Schemes"].includes(opportunity.category)).slice(0, 8);
 
@@ -15,17 +15,25 @@ export default function NormalAssessPage() {
   const { normalAssessment, setNormalAssessment, setAssistantOpen } = useAppState();
   const [draft, setDraft] = useState<NormalAssessmentDraft>(normalAssessment);
   const [notice, setNotice] = useState("");
+  const edited = useRef(false);
+
+  // Adopt the stored draft once AppProvider has hydrated it, but never over an edit in progress.
+  useEffect(() => {
+    setDraft((current) => resolveWorkingDraft(current, normalAssessment, edited.current));
+  }, [normalAssessment]);
   const selectedOpportunity = useMemo(() => opportunityChoices.find((item) => item.id === draft.opportunityId) ?? opportunityChoices[0], [draft.opportunityId]);
   const assessmentResult = draft.generated && draft.assessmentResult?.opportunityId === selectedOpportunity.id ? draft.assessmentResult : null;
   const generated = Boolean(assessmentResult);
 
   const updateDraft = (updater: (current: NormalAssessmentDraft) => NormalAssessmentDraft) => {
+    edited.current = true;
     setNotice("");
     setDraft((current) => ({ ...updater(current), generated: false, assessmentResult: null }));
   };
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
+    edited.current = true;
     const missing = [
       draft.name.trim() ? "" : "name",
       draft.institution.trim() ? "" : "institution",
