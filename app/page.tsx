@@ -73,7 +73,7 @@ export default function LandingPage() {
                   id="landing-search"
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
-                  placeholder="Try: psychology research fellowships for final-year students"
+                  placeholder="Search scholarships, fellowships, grants and more"
                   className="min-h-12 w-full min-w-0 bg-transparent text-base text-ink outline-none placeholder:text-muted/80"
                 />
               </div>
