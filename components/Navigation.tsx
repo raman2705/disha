@@ -54,6 +54,7 @@ export function Navigation() {
   }
 
   const demoSteps = buildDemoSteps(
+    t.journey,
     guidedApplication?.opportunityId ?? canonicalGuidedDemoOpportunityId,
     guidedApplication?.id ?? "pragati-readiness-2026",
     guidedPayment?.id ?? "pragati-payment-2026",
@@ -62,18 +63,13 @@ export function Navigation() {
 
   return (
     <header className="sticky top-0 z-30 border-b border-stone-200 bg-paper/95 backdrop-blur">
-      <div className="mx-auto flex min-h-[76px] max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
-        <Link href="/" className="flex shrink-0 items-center gap-3" aria-label={`${brand.name} home`}>
-          <div className="leading-none">
-            <div className="text-2xl font-black tracking-normal text-ink">दिशा</div>
-            <div className="-mt-1 text-sm font-bold text-ink">{brand.name}</div>
-          </div>
-          <span className="hidden border-l border-stone-300 pl-3 text-xs font-semibold leading-4 text-muted sm:inline">
-            Opportunities<br />for a brighter you
-          </span>
+      <div className="mx-auto flex min-h-[76px] max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:gap-6 sm:px-6 lg:px-8">
+        {/* Same mark, same wordmark, same treatment as the landing header: one Disha. */}
+        <Link href="/" className="shrink-0" aria-label={`${brand.name} home`}>
+          <DishaWordmark size="sm" />
         </Link>
 
-        <nav className="hidden flex-1 justify-center gap-1 md:flex">
+        <nav className="ml-2 hidden flex-1 justify-center gap-1 md:flex lg:ml-6">
           {nav.map((item) => {
             const Icon = item.icon;
             const active = item.href === "/opportunities" ? pathname.startsWith("/opportunities") || pathname.startsWith("/scholarships") : pathname.startsWith(item.href);
@@ -121,7 +117,7 @@ export function Navigation() {
             aria-label={t.nav.assistant}
           >
             <Sparkles size={16} />
-            <span className="hidden lg:inline">{t.nav.assistant}</span>
+            <span className="hidden whitespace-nowrap lg:inline">{t.nav.assistant}</span>
           </button>
 
           <div className="relative hidden sm:block">
@@ -166,7 +162,7 @@ export function Navigation() {
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-xs font-bold text-primary">
                 {displayInitials}
               </div>
-              <span className="hidden text-sm font-semibold text-ink sm:inline">{displayName}</span>
+              <span className="hidden whitespace-nowrap text-sm font-semibold text-ink sm:inline">{displayName}</span>
               <UserRound size={16} className="text-muted" />
             </button>
             {profileOpen ? (
@@ -274,15 +270,21 @@ function LandingHeader() {
   );
 }
 
-function buildDemoSteps(opportunityId: string, applicationId: string, paymentId: string, renewalHref: string) {
+function buildDemoSteps(
+  journey: (typeof translations)["en"]["journey"] | (typeof translations)["hi"]["journey"],
+  opportunityId: string,
+  applicationId: string,
+  paymentId: string,
+  renewalHref: string
+) {
   return [
-    { label: "Discover", href: "/demo" },
-    { label: "Assess", href: `/opportunities/${opportunityId}/assess` },
-    { label: "Prepare", href: "/preflight" },
-    { label: "Apply", href: "/apply" },
-    { label: "Verification", href: `/applications/${applicationId}` },
-    { label: "Payment", href: `/payments/${paymentId}` },
-    { label: "Renewal", href: renewalHref }
+    { label: journey.discover, href: "/demo" },
+    { label: journey.assess, href: `/opportunities/${opportunityId}/assess` },
+    { label: journey.prepare, href: "/preflight" },
+    { label: journey.apply, href: "/apply" },
+    { label: journey.verification, href: `/applications/${applicationId}` },
+    { label: journey.payment, href: `/payments/${paymentId}` },
+    { label: journey.renewal, href: renewalHref }
   ];
 }
 
@@ -294,7 +296,7 @@ function GuidedDemoStrip({
   onExit
 }: {
   pathname: string;
-  steps: ReturnType<typeof buildDemoSteps>;
+  steps: { label: string; href: string }[];
   collapsed: boolean;
   onCollapsedChange: (collapsed: boolean) => void;
   onExit: () => void;

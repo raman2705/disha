@@ -9,14 +9,16 @@ import { OwnershipRail } from "@/components/OwnershipRail";
 import { StatusBadge } from "@/components/StatusBadge";
 import { applicationId, getApplicationOwnership, getDemoApplication, institution } from "@/lib/data";
 import { useAppState } from "@/components/AppContext";
+import { localise, localiser } from "@/lib/hindi";
 
 export default function VerificationTrackerPage() {
   const params = useParams<{ id: string }>();
-  const { setDemoState } = useAppState();
+  const { setDemoState, language } = useAppState();
+  const tr = localiser(language);
   const [showDocuments, setShowDocuments] = useState(false);
   const [showNext, setShowNext] = useState(false);
   const currentApplication = getDemoApplication(params.id) ?? getDemoApplication("css-2026");
-  const ownership = currentApplication ? getApplicationOwnership(currentApplication) : null;
+  const ownership = currentApplication ? localise(getApplicationOwnership(currentApplication), language) : null;
 
   useEffect(() => {
     if (params.id.includes("pragati")) setDemoState("verification");
@@ -69,7 +71,7 @@ export default function VerificationTrackerPage() {
 
           <div className="space-y-4">
             <div>
-              <p className="text-xs font-bold uppercase tracking-normal text-muted">Current owner</p>
+              <p className="text-xs font-bold uppercase tracking-normal text-muted">{tr("Current owner")}</p>
               <h2 className="mt-2 text-2xl font-bold text-ink">{ownership.currentOwner}</h2>
             </div>
             <OwnershipRail items={ownership.rail} evidence={ownership.evidence} />
@@ -178,6 +180,8 @@ function ApplicationTracker({
   documents: string[];
   warning?: boolean;
 }) {
+  const { language } = useAppState();
+  const tr = localiser(language);
   const [showDocuments, setShowDocuments] = useState(false);
   const [showNext, setShowNext] = useState(false);
 
@@ -206,7 +210,7 @@ function ApplicationTracker({
 
           <div className="space-y-4">
             <div>
-              <p className="text-xs font-bold uppercase tracking-normal text-muted">Current owner</p>
+              <p className="text-xs font-bold uppercase tracking-normal text-muted">{tr("Current owner")}</p>
               <h2 className="mt-2 text-2xl font-bold text-ink">{owner}</h2>
             </div>
             <OwnershipRail items={rail} evidence={evidence} className={warning ? "bg-[#FFF3DD]" : undefined} />
@@ -216,7 +220,7 @@ function ApplicationTracker({
 
       <section className="grid gap-5 lg:grid-cols-[1fr_0.78fr]">
         <section className="rounded-[1rem] bg-white p-5 shadow-sm ring-1 ring-stone-200">
-          <h2 className="text-lg font-bold text-ink">Application packet</h2>
+          <h2 className="text-lg font-bold text-ink">{tr("Application packet")}</h2>
           <ul className="mt-3 grid gap-2 text-sm text-slate-700 sm:grid-cols-2">
             {documents.map((document) => (
               <li key={document}>✓ {document}</li>
@@ -245,7 +249,7 @@ function ApplicationTracker({
               className="inline-flex min-h-11 items-center gap-2 rounded-md bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-[#FBF7F1]"
             >
               <HelpCircle size={18} />
-              Owner logic
+              Why this is with them
             </button>
           </div>
         </aside>

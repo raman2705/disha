@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import clsx from "clsx";
 import { CheckCircle2, Save } from "lucide-react";
 import { useAppState } from "@/components/AppContext";
+import { localise, localiser } from "@/lib/hindi";
 import { OwnershipRail } from "@/components/OwnershipRail";
 import { PrimaryButton, PrimaryLink } from "@/components/PrimaryButton";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -12,12 +13,13 @@ import { getApplicationOwnership, getDemoApplication, getGuidedDemoPaymentApplic
 
 export default function PaymentTrackerPage() {
   const params = useParams<{ id: string }>();
-  const { guidedDemoActive, guidedDemoOpportunityId, setDemoState } = useAppState();
+  const { guidedDemoActive, guidedDemoOpportunityId, setDemoState, language } = useAppState();
+  const tr = localiser(language);
   const [editing, setEditing] = useState(false);
   const [corrected, setCorrected] = useState(false);
   const application = guidedDemoActive ? getGuidedDemoPaymentApplication(guidedDemoOpportunityId) : getDemoApplication(params.id) ?? getDemoApplication("css-payment-2026");
   const renewalApplication = guidedDemoActive ? getGuidedDemoRenewalApplication(guidedDemoOpportunityId) : getDemoApplication("css-renewal-2027");
-  const ownership = application ? getApplicationOwnership(application, corrected ? "revalidation" : "bank-blocker") : null;
+  const ownership = application ? localise(getApplicationOwnership(application, corrected ? "revalidation" : "bank-blocker"), language) : null;
 
   useEffect(() => {
     if (application?.opportunityId === "aicte-pragati-scholarship") {
@@ -42,7 +44,7 @@ export default function PaymentTrackerPage() {
 
           <div className="space-y-4">
             <div>
-              <p className="text-xs font-bold uppercase tracking-normal text-muted">Current owner</p>
+              <p className="text-xs font-bold uppercase tracking-normal text-muted">{tr("Current owner")}</p>
               <h2 className="mt-2 text-2xl font-bold text-ink">{ownership?.currentOwner}</h2>
               <p className={clsx("mt-1 text-sm font-semibold", corrected ? "text-primary" : "text-amber-900")}>
                 {ownership?.applicantAction}
@@ -62,18 +64,18 @@ export default function PaymentTrackerPage() {
                 Correct the beneficiary name to restart validation.
               </p>
               <div className="mt-6 grid gap-4 sm:grid-cols-2">
-                <Compare label="Application" value="Ananya R." tone="danger" />
-                <Compare label="Bank record" value={profile.name} tone="success" />
+                <Compare label={tr("Application")} value="Ananya R." tone="danger" />
+                <Compare label={tr("Bank record")} value={profile.name} tone="success" />
               </div>
             </div>
 
             <div className="rounded-[1rem] bg-[#FFF3DD] p-5">
-              <p className="text-xs font-bold uppercase tracking-normal text-muted">Current action</p>
+              <p className="text-xs font-bold uppercase tracking-normal text-muted">{tr("Current action")}</p>
               <h3 className="mt-2 text-2xl font-bold text-ink">You own the next action</h3>
               <p className="mt-2 text-sm leading-6 text-muted">Review the beneficiary field and save the corrected name.</p>
               <div className="mt-6">
                 {!editing ? (
-                  <PrimaryButton onClick={() => setEditing(true)}>Review details</PrimaryButton>
+                  <PrimaryButton onClick={() => setEditing(true)}>{tr("Review details")}</PrimaryButton>
                 ) : (
                   <form
                     className="space-y-4 state-pop"

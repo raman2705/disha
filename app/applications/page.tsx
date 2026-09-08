@@ -32,15 +32,23 @@ export default function ApplicationsPage() {
         </PageHeader>
         <section className="mx-auto max-w-2xl rounded-lg bg-white p-7 shadow-sm ring-1 ring-stone-200">
           <h2 className="font-serif text-3xl font-bold text-ink">
-            {normalResult ? `${normalResult.recommendationLabel}: ${normalResult.opportunityName}` : "Assess an opportunity first."}
+            {normalResult ? "You have an assessment in progress" : "Assess an opportunity first."}
           </h2>
-          <p className="mt-3 text-sm leading-6 text-muted">
-            {normalResult
-              ? normalResult.nextAction
-              : "This keeps normal mode clean. The guided sample journey appears only when you choose Try the demo."}
-          </p>
+          {normalResult ? (
+            <div className="mt-4 rounded-lg bg-[#FBF7F1] p-4">
+              <p className="text-xs font-black uppercase tracking-wide text-muted">Assessment, not an application</p>
+              <p className="mt-1.5 text-sm font-bold text-ink">{normalResult.opportunityName}</p>
+              <p className="mt-1 text-sm leading-6 text-slate-700">
+                {normalResult.recommendationLabel}. {normalResult.nextAction}
+              </p>
+            </div>
+          ) : (
+            <p className="mt-3 text-sm leading-6 text-muted">
+              This keeps normal mode clean. The guided sample journey appears only when you choose the sample journey.
+            </p>
+          )}
           <Link href="/assess" className="mt-6 inline-flex min-h-11 items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-bold text-white">
-            {normalResult ? "Open assessment" : "Start assessment"}
+            {normalResult ? "Continue this assessment" : "Start assessment"}
             <ArrowRight size={16} />
           </Link>
         </section>

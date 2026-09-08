@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { FileUp } from "lucide-react";
 import { useAppState } from "@/components/AppContext";
+import { localise, localiser } from "@/lib/hindi";
 import { OwnershipRail } from "@/components/OwnershipRail";
 import { PageHeader } from "@/components/PageHeader";
 import { PrimaryButton, PrimaryLink } from "@/components/PrimaryButton";
@@ -13,13 +14,14 @@ import { getApplicationOwnership, getDemoApplication, getGuidedDemoRenewalApplic
 type RenewalState = "needsMarksheet" | "readyToSubmit" | "submitted";
 
 export default function RenewalPage() {
-  const { guidedDemoActive, guidedDemoOpportunityId, setDemoState } = useAppState();
+  const { guidedDemoActive, guidedDemoOpportunityId, setDemoState, language } = useAppState();
+  const tr = localiser(language);
   const [renewalState, setRenewalState] = useState<RenewalState>("needsMarksheet");
   const marksheetAdded = renewalState !== "needsMarksheet";
   const submitted = renewalState === "submitted";
   const application = guidedDemoActive ? getGuidedDemoRenewalApplication(guidedDemoOpportunityId) : getDemoApplication("css-renewal-2027");
   const snapshotId = submitted ? "submitted" : marksheetAdded ? "ready-to-submit" : "needs-marksheet";
-  const ownership = application ? getApplicationOwnership(application, snapshotId) : null;
+  const ownership = application ? localise(getApplicationOwnership(application, snapshotId), language) : null;
   const currentStatus = submitted ? `Waiting on ${institution.name}` : marksheetAdded ? "Ready to submit renewal" : "Renewal preparation incomplete";
 
   useEffect(() => {
@@ -38,7 +40,7 @@ export default function RenewalPage() {
             <StatusBadge tone={submitted ? "active" : "warning"}>
               {ownership?.status ?? (submitted ? `Waiting on ${institution.name}` : marksheetAdded ? "Ready to submit" : "Latest marksheet required")}
             </StatusBadge>
-            <p className="mt-5 text-sm font-bold uppercase tracking-normal text-muted">Current status</p>
+            <p className="mt-5 text-sm font-bold uppercase tracking-normal text-muted">{tr("Current status")}</p>
             <h2 className="mt-2 max-w-md text-4xl font-bold leading-tight text-ink">
               {currentStatus}
             </h2>
@@ -47,7 +49,7 @@ export default function RenewalPage() {
             </p>
             {renewalState === "needsMarksheet" ? (
               <div className="mt-6">
-                <PrimaryButton onClick={() => setRenewalState("readyToSubmit")}>Add marksheet</PrimaryButton>
+                <PrimaryButton onClick={() => setRenewalState("readyToSubmit")}>{tr("Add marksheet")}</PrimaryButton>
               </div>
             ) : renewalState === "readyToSubmit" ? (
               <div className="mt-6">
@@ -60,7 +62,7 @@ export default function RenewalPage() {
 
           <div className="space-y-4">
             <div>
-              <p className="text-xs font-bold uppercase tracking-normal text-muted">Current owner</p>
+              <p className="text-xs font-bold uppercase tracking-normal text-muted">{tr("Current owner")}</p>
               <h3 className="mt-2 text-2xl font-bold text-ink">{ownership?.currentOwner}</h3>
               <p className={submitted ? "mt-1 text-sm font-semibold text-primary" : "mt-1 text-sm font-semibold text-amber-900"}>
                 {ownership?.applicantAction}
@@ -73,7 +75,7 @@ export default function RenewalPage() {
 
       <section className="grid gap-5 lg:grid-cols-[1fr_0.82fr]">
         <article className="rounded-[1rem] bg-white p-6 shadow-sm">
-          <h2 className="text-xl font-bold text-ink">Renewal ownership</h2>
+          <h2 className="text-xl font-bold text-ink">{tr("Renewal ownership")}</h2>
           <div className="mt-5 grid gap-5 md:grid-cols-2">
             <OwnerBlock
               title="Your renewal"

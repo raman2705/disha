@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
-import clsx from "clsx";
 import { ArrowRight, Search } from "lucide-react";
 import { CompassMark, DishaWordmark } from "@/components/DishaMark";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -24,12 +23,6 @@ const stages = [
   { label: "Prepare", body: "See what is ready and what is missing.", detail: "Each blocker names the evidence it needs and who checks it." },
   { label: "Apply", body: "Submit with what Disha already holds.", detail: "A review of prefilled answers rather than a retyping exercise." },
   { label: "Track", body: "Know who owns the next move.", detail: "Through verification, payment and renewal, including why things stall." }
-];
-
-const journey = [
-  { id: "discover", label: "Discover", body: "Find relevant opportunities" },
-  { id: "assess", label: "Assess", body: "Understand your fit" },
-  { id: "apply", label: "Apply", body: "Get help with next steps" }
 ];
 
 /** The one opportunity shown as a worked example. Read from the catalogue so it stays truthful. */
@@ -61,12 +54,12 @@ export default function LandingPage() {
           <DishaWordmark size="lg" settle />
 
           <h1 className="landing-rise mt-9 max-w-3xl font-serif text-[2.75rem] font-black leading-[1.04] tracking-tight text-ink sm:text-6xl lg:text-[4.25rem]">
-            Where do you want to go next?
+            Find the opportunities worth your time.
           </h1>
 
           <p className="landing-rise landing-rise-1 mt-6 max-w-2xl text-lg leading-8 text-slate-700">
-            Explore scholarships, fellowships, grants, funding and more, with Disha helping you assess your fit and
-            navigate the journey from discovery to application.
+            Disha separates eligibility from competitive fit, shows the evidence behind its assessment, and stays with
+            you from preparation through to payment and renewal.
           </p>
 
           <form onSubmit={explore} className="landing-rise landing-rise-2 mt-9 max-w-4xl" role="search">
@@ -122,58 +115,13 @@ export default function LandingPage() {
           </div>
         </section>
 
-        <section id="how-it-works" className="landing-rise landing-rise-4 pt-16 sm:pt-20">
-          <div className="relative">
-            <span
-              aria-hidden="true"
-              className="journey-rail absolute left-[16.667%] right-[16.667%] top-[9px] hidden h-px origin-left bg-stone-300 sm:block"
-            />
-
-            <ol className="relative grid gap-6 sm:grid-cols-3 sm:gap-6">
-              {journey.map((step, index) => {
-                const isAssess = step.id === "assess";
-                return (
-                  <li key={step.id} className="relative flex items-start gap-4 sm:block sm:text-center">
-                    {index < journey.length - 1 ? (
-                      // Stacked layout: join this dot to the next one across the 24px grid gap.
-                      <span aria-hidden="true" className="absolute -bottom-6 left-[8.5px] top-[18px] w-px bg-stone-300 sm:hidden" />
-                    ) : null}
-                    <span className="flex h-[18px] w-[18px] shrink-0 items-center justify-center sm:mx-auto">
-                      {isAssess ? (
-                        <span className="flex h-[18px] w-[18px] items-center justify-center rounded-full bg-[#DDE3FA]">
-                          <span className="h-2.5 w-2.5 rounded-full bg-primary" />
-                        </span>
-                      ) : (
-                        <span className="h-2.5 w-2.5 rounded-full border-[1.5px] border-stone-400 bg-paper" />
-                      )}
-                    </span>
-                    <div className="sm:mt-3.5">
-                      <h2
-                        className={clsx(
-                          "leading-none",
-                          isAssess ? "text-lg font-black text-ink" : "text-base font-bold text-slate-600"
-                        )}
-                      >
-                        {step.label}
-                      </h2>
-                      <p className={clsx("mt-1.5 text-sm leading-6", isAssess ? "text-slate-700" : "text-muted")}>
-                        {step.body}
-                      </p>
-                    </div>
-                  </li>
-                );
-              })}
-            </ol>
-          </div>
-        </section>
-
-        <section id="how-disha-works" className="landing-rise landing-rise-5 scroll-mt-8 pt-16 sm:pt-20">
+        <section id="how-it-works" className="landing-rise landing-rise-4 scroll-mt-8 pt-14 sm:pt-16">
           <h2 className="font-serif text-3xl font-black leading-tight text-ink">How Disha works</h2>
           <p className="mt-2 max-w-2xl text-base leading-7 text-slate-700">
-            Five stages, one thread. Most applicants lose an opportunity somewhere between deciding to apply and
-            getting paid, so Disha stays with the application the whole way.
+            Five stages, one thread. Track covers verification, payment and renewal, because most applicants lose an
+            opportunity somewhere between deciding to apply and getting paid.
           </p>
-          <ol className="mt-7 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <ol id="how-disha-works" className="mt-7 grid scroll-mt-8 gap-3 sm:grid-cols-2 lg:grid-cols-5">
             {stages.map((stage, index) => (
               <li key={stage.label} className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-stone-200">
                 <div className="flex items-center gap-2">
@@ -243,6 +191,10 @@ export default function LandingPage() {
             </dl>
 
             <p className="mt-6 border-t border-stone-100 pt-4 text-xs leading-5 text-muted">
+              Built from the programme's published eligibility rules, its known selection criteria, and the applicant's
+              evidence, with the share of criteria actually covered reported alongside.
+            </p>
+            <p className="mt-2 text-xs leading-5 text-muted">
               Example only. It is not an assessment of you. Disha builds your own from details you provide.
             </p>
           </article>

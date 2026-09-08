@@ -21,7 +21,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <AppProvider>
           <Navigation />
           <DishaAssistantDrawer />
-          <main className="mx-auto max-w-7xl px-4 pb-12 pt-12 sm:px-6 sm:pt-14 lg:px-8">{children}</main>
+          <main className="mx-auto max-w-7xl px-4 pb-56 pt-12 sm:px-6 sm:pt-14 lg:px-8">{children}</main>
           <AssistantLauncher />
           <Walkthrough />
         </AppProvider>

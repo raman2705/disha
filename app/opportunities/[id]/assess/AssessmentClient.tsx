@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, ArrowRight, CheckCircle2, FileSearch, RefreshCw, Sparkles, TriangleAlert } from "lucide-react";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useAppState } from "@/components/AppContext";
+import { localiser } from "@/lib/hindi";
 import { ananyaEvidencePassport, getGuidedDemoApplication, profile } from "@/lib/data";
 import { buildNormalApplicant } from "@/lib/normalAssessment";
 import { Language, languageLabels, translations } from "@/lib/i18n";
@@ -38,12 +39,14 @@ const statusTone = {
   credible: "active",
   claim_only: "warning",
   none: "neutral",
-  moderate: "active"
+  moderate: "active",
+  neutral: "neutral"
 } as const;
 
 export default function AssessmentClient({ opportunity, initialAsk: _initialAsk }: { opportunity: Opportunity; initialAsk: string }) {
   const { guidedDemoActive, guidedDemoOpportunityId, language, normalAssessment, setLanguage, setDemoState, setAssistantOpen } = useAppState();
   const t = translations[language];
+  const tr = localiser(language);
   const storageKey = `disha-assessment-${opportunity.id}`;
   const assessmentConfig = useMemo(() => getAssessmentAvailability(opportunity), [opportunity]);
   const fullAssessmentAvailable = assessmentConfig.availability === "full";
@@ -106,7 +109,7 @@ export default function AssessmentClient({ opportunity, initialAsk: _initialAsk 
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#9B6D55]">{opportunity.category}</p>
           <h1 className="mt-3 max-w-3xl font-serif text-5xl font-black leading-[0.98] tracking-normal text-ink">
-            {opportunity.name} assessment
+            {opportunity.name} {tr("assessment")}
           </h1>
           <p className="mt-4 max-w-2xl text-base leading-7 text-slate-700">
             {assessmentResult.overallAssessment} {guidedDemoActive
@@ -114,8 +117,8 @@ export default function AssessmentClient({ opportunity, initialAsk: _initialAsk 
               : "Disha generated this from your current evidence answers and the programme requirements."}
           </p>
           <div className="mt-4 flex flex-wrap items-center gap-2">
-            <StatusBadge tone="active">{assessmentResult.recommendationLabel}</StatusBadge>
-            <span className="text-sm font-semibold text-muted">Confidence: {sentenceCase(assessmentResult.confidence.level)}</span>
+            <StatusBadge tone="active">{tr(assessmentResult.recommendationLabel)}</StatusBadge>
+            <span className="text-sm font-semibold text-muted">{tr("Confidence:")} {tr(sentenceCase(assessmentResult.confidence.level))}</span>
           </div>
           <div className="mt-5 flex flex-wrap gap-3">
             <button type="button" onClick={openAssistant} className="inline-flex min-h-11 items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700">
@@ -138,7 +141,7 @@ export default function AssessmentClient({ opportunity, initialAsk: _initialAsk 
         </div>
 
         <section className="rounded-lg bg-white p-5 shadow-sm ring-1 ring-stone-200">
-          <p className="text-xs font-bold uppercase tracking-normal text-muted">Decision</p>
+          <p className="text-xs font-bold uppercase tracking-normal text-muted">{tr("Decision")}</p>
           <h2 className="mt-2 font-serif text-3xl font-bold leading-tight text-ink">
             {decisionHeading}
           </h2>
@@ -185,19 +188,19 @@ export default function AssessmentClient({ opportunity, initialAsk: _initialAsk 
       ) : null}
 
       <section className="mb-7 grid gap-4 md:grid-cols-4">
-        <AssessmentSummaryCard title={t.assessment.eligibility} status={assessmentResult.eligibility.status} body={eligibilitySummary(assessmentResult)} />
+        <AssessmentSummaryCard title={tr("Eligibility")} status={assessmentResult.eligibility.status} body={eligibilitySummary(assessmentResult)} />
         <AssessmentSummaryCard
-          title={assessmentResult.depth === "basic" ? "Initial fit" : "Competitive fit"}
+          title={assessmentResult.depth === "basic" ? tr("Initial fit") : tr("Competitive fit")}
           status={assessmentResult.depth === "basic" ? assessmentResult.initialFit.band : assessmentResult.competitiveness.band}
           body={competitiveFitSummary(assessmentResult)}
         />
-        <AssessmentSummaryCard title="Confidence" status={assessmentResult.confidence.level} body={assessmentResult.confidence.explanation} />
+        <AssessmentSummaryCard title={tr("Confidence")} status={assessmentResult.confidence.level} body={assessmentResult.confidence.explanation} />
         <article className="rounded-lg bg-white p-5 shadow-sm ring-1 ring-stone-200">
           <div className="flex items-start justify-between gap-3">
-            <h2 className="font-serif text-xl font-bold text-ink">Recommendation</h2>
-            <StatusBadge tone={assessmentResult.effortVsUpside.effort === "High" ? "warning" : "active"}>{assessmentResult.effortVsUpside.effort}</StatusBadge>
+            <h2 className="font-serif text-xl font-bold text-ink">{tr("Recommendation")}</h2>
+            <StatusBadge tone={assessmentResult.effortVsUpside.effort === "High" ? "warning" : "active"}>{tr("Effort")}: {tr(assessmentResult.effortVsUpside.effort)}</StatusBadge>
           </div>
-          <p className="mt-3 text-lg font-black text-ink">{assessmentResult.recommendationLabel}</p>
+          <p className="mt-3 text-lg font-black text-ink">{tr(assessmentResult.recommendationLabel)}</p>
           <p className="mt-2 text-sm leading-6 text-muted">{assessmentResult.recommendation.explanation}</p>
         </article>
       </section>

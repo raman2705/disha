@@ -66,7 +66,12 @@ export type CoreProfile = {
   qualifiers: Record<string, string>;
 };
 
-export type FitBand = "strong" | "moderate" | "low" | "unknown";
+/**
+ * "neutral" is the band for "this is not a barrier": an opportunity that publishes no restriction
+ * on something has not given positive evidence about it either. It is displayed and explained but
+ * never enters the aggregate, so absence of a restriction can never look like a strength.
+ */
+export type FitBand = "strong" | "moderate" | "low" | "neutral" | "unknown";
 export type AssessmentDepth = "basic" | "deep";
 
 /**
@@ -1726,7 +1731,7 @@ export function buildInitialFit(
   criteria: AssessmentResult["competitiveness"]["criteria"]
 ): InitialFit {
   const signals = core ? initialFitSignals(opportunity, core) : [];
-  const known = signals.filter((signal) => signal.band !== "unknown" && signal.affectsBand);
+  const known = signals.filter((signal) => signal.band !== "unknown" && signal.band !== "neutral" && signal.affectsBand);
   const band = aggregateFitBand(known);
 
   const missingInformation = [
@@ -1754,7 +1759,7 @@ export function buildInitialFit(
 }
 
 const FIT_AGGREGATION_RULE =
-  "Initial fit is low if any decisive alignment signal is low, strong if at least two are known and all are strong, and moderate otherwise. Field alignment is shown but never lowers the band, because an opportunity not naming your discipline is not the same as excluding it. It is a band, not a score, because core answers alone cannot support a number.";
+  "Initial fit is low if any decisive alignment signal is low, strong if at least two are known and all are strong, and moderate otherwise. Signals marked as no restriction or not enough information are shown but never counted either way: an opportunity that does not restrict something has not given evidence about it. It is a band, not a score, because core answers alone cannot support a number.";
 
 function aggregateFitBand(known: InitialFitSignal[]): FitBand {
   if (!known.length) return "unknown";
@@ -1764,7 +1769,7 @@ function aggregateFitBand(known: InitialFitSignal[]): FitBand {
 }
 
 function fitRank(band: FitBand) {
-  return band === "low" ? 0 : band === "moderate" ? 1 : band === "strong" ? 2 : 3;
+  return band === "low" ? 0 : band === "moderate" ? 1 : band === "strong" ? 2 : band === "neutral" ? 3 : 4;
 }
 
 function eligibilityReason(eligibility: AssessmentResult["eligibility"]) {
@@ -1779,13 +1784,65 @@ function eligibilityReason(eligibility: AssessmentResult["eligibility"]) {
   return `All ${passed.length} published hard requirement${passed.length === 1 ? "" : "s"} pass on the details provided.`;
 }
 
+/**
+ * Which alignment signals an opportunity supports.
+ *
+ * Signals are drawn from what the programme itself publishes, so a startup funding route is not
+ * assessed with a scholarship ontology. A dimension the programme says nothing about is omitted
+ * rather than guessed at.
+ */
 function initialFitSignals(opportunity: Opportunity, core: CoreProfile): InitialFitSignal[] {
   return [
-    academicSignal(opportunity, core),
+    academicMeritsSelection(opportunity) ? academicSignal(opportunity, core) : null,
     stageSignal(opportunity, core),
+    ventureSignal(opportunity, core),
     fieldSignal(opportunity, core),
     incomeSignal(opportunity, core)
   ].filter(Boolean) as InitialFitSignal[];
+}
+
+/**
+ * Venture stage, for funding routes that publish one. Read from the qualifier the basic assessment
+ * already asks for, so nothing extra is inferred.
+ */
+function ventureSignal(opportunity: Opportunity, core: CoreProfile): InitialFitSignal | null {
+  if (opportunity.category !== "Startup Funding") return null;
+  const stage = core.qualifiers?.startupStage;
+  const comparedWith = `the stage this programme funds (${opportunity.stage})`;
+  if (!stage) {
+    return {
+      id: "venture",
+      label: "Venture stage",
+      band: "unknown",
+      userValue: "Not provided",
+      comparedWith,
+      explanation: "Venture stage has not been provided, so stage of the venture cannot be placed against what this programme funds.",
+      source: "Official criterion",
+      affectsBand: true
+    };
+  }
+  const band: FitBand =
+    stage === "No venture yet"
+      ? "low"
+      : stage === "Exploring an idea"
+        ? "moderate"
+        : "strong";
+  const explanation =
+    stage === "No venture yet"
+      ? `This programme funds ventures, and there is no venture yet, so it does not align with ${comparedWith}.`
+      : stage === "Exploring an idea"
+        ? `An idea at exploration stage is early for ${comparedWith}.`
+        : `A venture at "${stage.toLowerCase()}" aligns with ${comparedWith}.`;
+  return {
+    id: "venture",
+    label: "Venture stage",
+    band,
+    userValue: stage,
+    comparedWith,
+    explanation,
+    source: "Official criterion",
+    affectsBand: true
+  };
 }
 
 function academicSignal(opportunity: Opportunity, core: CoreProfile): InitialFitSignal {
@@ -1863,13 +1920,14 @@ function fieldSignal(opportunity: Opportunity, core: CoreProfile): InitialFitSig
     .some((token) => text.includes(token));
   const restricted = FIELD_KEYWORDS.some((keyword) => text.includes(keyword));
 
-  // Absence of a mention is not exclusion, so this signal never reports "low".
-  const band: FitBand = named || !restricted ? "strong" : "moderate";
+  // Naming the field is positive evidence. Publishing no restriction is not: it means the field is
+  // not a barrier, which is a neutral fact, so it must never be reported as a strength.
+  const band: FitBand = named ? "strong" : restricted ? "moderate" : "neutral";
   const explanation = named
     ? `${core.fieldOfStudy} appears in this opportunity's published description.`
     : restricted
       ? `This opportunity names particular disciplines and does not mention ${core.fieldOfStudy}, though it does not exclude it either.`
-      : `This opportunity publishes no discipline restriction, so ${core.fieldOfStudy} is not a barrier.`;
+      : `This opportunity publishes no discipline restriction, so ${core.fieldOfStudy} is not a barrier. That is not evidence for or against competitiveness.`;
   return {
     id: "field",
     label: "Field alignment",

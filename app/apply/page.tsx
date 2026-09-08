@@ -8,18 +8,21 @@ import { PageHeader } from "@/components/PageHeader";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { RequirementChecklist } from "@/components/RequirementChecklist";
 import { useAppState } from "@/components/AppContext";
+import { localise, localiser } from "@/lib/hindi";
 import { canonicalGuidedDemoOpportunityId, getApplicationReference, getDemoApplication, getGuidedDemoApplication, institution, profile } from "@/lib/data";
 import { getOpportunity } from "@/lib/opportunities";
 
-const steps = ["Personal details", "Education", "Bank details", "Documents & review"];
+const stepLabels = ["Personal details", "Education", "Bank details", "Documents & review"];
 
 export default function ApplyPage() {
   const router = useRouter();
-  const { guidedDemoActive, guidedDemoOpportunityId, setDemoState } = useAppState();
+  const { guidedDemoActive, guidedDemoOpportunityId, setDemoState, language } = useAppState();
+  const tr = localiser(language);
   const guidedApplication = guidedDemoActive ? getGuidedDemoApplication(guidedDemoOpportunityId) : getDemoApplication("css-2026");
   const opportunity = getOpportunity(guidedApplication?.opportunityId ?? canonicalGuidedDemoOpportunityId) ?? getOpportunity(canonicalGuidedDemoOpportunityId);
   const applicationTitle = guidedDemoActive ? opportunity?.name ?? guidedApplication?.title ?? "Selected opportunity" : "Central Sector Scholarship";
   const trackerHref = guidedDemoActive ? guidedApplication?.href ?? "/applications" : "/applications/css-2026";
+  const steps = localise(stepLabels, language);
   const [step, setStep] = useState(0);
   const [submitted, setSubmitted] = useState(false);
 
@@ -27,7 +30,7 @@ export default function ApplyPage() {
     if (guidedDemoActive) setDemoState(submitted ? "verification" : "apply");
   }, [guidedDemoActive, submitted, setDemoState]);
   const fields = useMemo(
-    () => [
+    () => localise([
       [
         ["Full name", profile.name],
         ["Email", profile.email],
@@ -46,8 +49,8 @@ export default function ApplyPage() {
         ["IFSC", "SBIN0004521"],
         ["Validation", "Verified"]
       ]
-    ],
-    []
+    ], language),
+    [language]
   );
 
   if (submitted) {
@@ -55,17 +58,17 @@ export default function ApplyPage() {
       <div>
         <section className="rounded-lg border border-emerald-200 bg-emerald-50 p-8 shadow-soft state-pop">
           <CheckCircle2 className="text-emerald-700" size={34} />
-          <h1 className="mt-4 text-3xl font-bold text-ink">Application submitted</h1>
+          <h1 className="mt-4 text-3xl font-bold text-ink">{tr("Application submitted")}</h1>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-700">
             {guidedDemoActive ? `Ananya's ${applicationTitle} application` : `Your ${applicationTitle} application`} is now with {institution.cell} for institute verification.
           </p>
           <dl className="mt-6 grid gap-3 sm:grid-cols-2">
             <div className="rounded-md bg-white p-3">
-              <dt className="text-xs font-bold uppercase tracking-normal text-muted">Application ID</dt>
+              <dt className="text-xs font-bold uppercase tracking-normal text-muted">{tr("Application ID")}</dt>
               <dd className="mt-1 font-semibold text-ink">{guidedApplication ? getApplicationReference(guidedApplication) : "Pending"}</dd>
             </div>
             <div className="rounded-md bg-white p-3">
-              <dt className="text-xs font-bold uppercase tracking-normal text-muted">Who acts next</dt>
+              <dt className="text-xs font-bold uppercase tracking-normal text-muted">{tr("Who acts next")}</dt>
               <dd className="mt-1 font-semibold text-ink">{institution.cell}</dd>
             </div>
           </dl>
@@ -135,7 +138,7 @@ export default function ApplyPage() {
             Back
           </button>
           {step < steps.length - 1 ? (
-            <PrimaryButton onClick={() => setStep((value) => value + 1)}>Save and continue</PrimaryButton>
+            <PrimaryButton onClick={() => setStep((value) => value + 1)}>{tr("Save and continue")}</PrimaryButton>
           ) : (
             <button
               type="button"

@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import clsx from "clsx";
 import { CheckCircle2, Clock, ShieldCheck } from "lucide-react";
 import { StatusBadge } from "@/components/StatusBadge";
+import { useAppState } from "@/components/AppContext";
+import { translations } from "@/lib/i18n";
 import {
   blockerOwner,
   blockerStateCopy,
@@ -30,8 +32,17 @@ export function BlockerCard({
   status: BlockerStatus;
   onChange: (status: BlockerStatus) => void;
 }) {
+  const { language } = useAppState();
+  const t = translations[language].blocker;
   const [choice, setChoice] = useState("");
   const copy = blockerStateCopy[status.state];
+  const stateLabel = {
+    missing: t.missing,
+    action_needed: t.actionNeeded,
+    provided: t.provided,
+    under_review: t.underReview,
+    resolved: t.resolved
+  }[status.state];
   const owner = blockerOwner(definition, status);
 
   // The review is the one transition the applicant does not drive.
@@ -56,7 +67,7 @@ export function BlockerCard({
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <StatusBadge tone={copy.tone}>{copy.label}</StatusBadge>
+          <StatusBadge tone={copy.tone}>{stateLabel}</StatusBadge>
           <h3 className="mt-3 text-lg font-black leading-tight text-ink">{definition.title}</h3>
         </div>
         {status.state === "resolved" ? <CheckCircle2 className="shrink-0 text-emerald-700" size={24} aria-hidden="true" /> : null}
@@ -65,23 +76,23 @@ export function BlockerCard({
       <p className="mt-2.5 text-sm leading-6 text-slate-700">{copy.meaning}</p>
 
       <p className="mt-3 rounded-lg bg-[#FBF7F1] p-3 text-sm leading-6 text-slate-700">
-        <span className="font-bold text-ink">Why this matters:</span> {definition.whyItMatters}
+        <span className="font-bold text-ink">{t.whyMatters}</span> {definition.whyItMatters}
       </p>
 
       {status.returnedReason ? (
         <p className="mt-3 rounded-lg bg-[#FFF3DD] p-3 text-sm leading-6 text-amber-900">
-          <span className="font-bold">Returned:</span> {status.returnedReason}
+          <span className="font-bold">{t.returned}</span> {status.returnedReason}
         </p>
       ) : null}
 
       <dl className="mt-3.5 grid gap-1.5 text-sm">
         <div className="flex flex-wrap gap-x-2">
-          <dt className="font-bold text-ink">Who owns the next move:</dt>
+          <dt className="font-bold text-ink">{t.whoOwns}</dt>
           <dd className="text-slate-700">{owner}</dd>
         </div>
         {status.evidence ? (
           <div className="flex flex-wrap gap-x-2">
-            <dt className="font-bold text-ink">You provided:</dt>
+            <dt className="font-bold text-ink">{t.youProvided}</dt>
             <dd className="text-slate-700">{status.evidence}</dd>
           </div>
         ) : null}
@@ -123,7 +134,7 @@ export function BlockerCard({
             onClick={() => onChange(nextBlockerStatus(status, { type: "provide", evidence: choice }))}
             className="mt-3.5 inline-flex min-h-11 items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-stone-300"
           >
-            Save this evidence
+            {t.save}
           </button>
         </div>
       ) : null}
@@ -139,7 +150,7 @@ export function BlockerCard({
             className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-black text-white transition hover:bg-blue-700"
           >
             <ShieldCheck size={16} aria-hidden="true" />
-            Send to {definition.reviewer}
+            {t.sendTo} {definition.reviewer}
           </button>
         </div>
       ) : null}
@@ -147,7 +158,7 @@ export function BlockerCard({
       {status.state === "under_review" ? (
         <p className="mt-4 inline-flex items-center gap-2 rounded-md bg-[#EEF2FF] px-3.5 py-2.5 text-sm font-bold text-primary">
           <Clock size={16} className="animate-pulse" aria-hidden="true" />
-          {definition.reviewer} is checking this. Simulated for the sample journey.
+          {definition.reviewer} {t.simulated}
         </p>
       ) : null}
 

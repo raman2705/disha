@@ -427,11 +427,14 @@ test("case 1: clearly eligible and strong fit", () => {
 });
 
 test("case 2: eligible but weak fit", () => {
-  const weak = core({ ...strongPragatiProfile, academicPerformance: "Below 60% or under 6 CGPA" });
+  // Pragati's hard rules test discipline, gender, institution and income, none of which a
+  // postgraduate fails. The stage it targets is undergraduate/diploma, so this profile is
+  // formally eligible while aligning poorly, which is exactly the distinction Disha exists to make.
+  const weak = core({ ...strongPragatiProfile, educationLevel: "Postgraduate", yearStatus: "Year 1" });
   const result = buildBasicAssessment(pragati(), weak);
   assert.equal(result.eligibility.status, "eligible", "a weak fit is still formally eligible");
   assert.equal(result.initialFit.band, "low");
-  assert.ok(result.initialFit.reasons.some((reason) => reason.toLowerCase().includes("academic")));
+  assert.ok(result.initialFit.reasons.some((reason) => reason.toLowerCase().includes("stage")));
 });
 
 test("case 3: clearly ineligible", () => {
@@ -670,5 +673,82 @@ test("the walkthrough covers the whole journey and matches its own routes", () =
       const target = walkthroughStepForPath(step.href);
       assert.ok(target && target.index > index, `${step.id} should link forward, not backward`);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Assessment semantics: no restriction is not evidence, and criteria suit the category.
+// ---------------------------------------------------------------------------
+
+const sisfs = () => getOpportunity("startup-india-seed-fund");
+
+test("absence of a restriction is neutral, never a strength", () => {
+  const founder = core({
+    ageBand: "22-25",
+    domicile: "Karnataka",
+    educationLevel: "Founder",
+    fieldOfStudy: "Neuroscience",
+    yearStatus: "Graduated",
+    academicPerformance: "Above 85% or 8.5+ CGPA",
+    householdIncome: "₹4.5-6 lakh",
+    qualifiers: { startupStage: "Prototype or MVP", interests: "Starting or growing a venture" }
+  });
+  const result = buildBasicAssessment(sisfs(), founder);
+  const field = result.initialFit.signals.find((signal) => signal.id === "field");
+
+  assert.equal(field.band, "neutral", "no published discipline restriction must not read as strong");
+  assert.match(field.explanation, /not a barrier/i);
+  assert.match(field.explanation, /not evidence for or against/i);
+  assert.equal(field.affectsBand, false, "a neutral signal must not move the band either way");
+});
+
+test("a startup programme is not assessed with a scholarship ontology", () => {
+  const founder = core({
+    educationLevel: "Founder",
+    fieldOfStudy: "Neuroscience",
+    academicPerformance: "Above 85% or 8.5+ CGPA",
+    qualifiers: { startupStage: "Prototype or MVP" }
+  });
+  const ids = buildBasicAssessment(sisfs(), founder).initialFit.signals.map((signal) => signal.id);
+
+  assert.ok(!ids.includes("academic"), "SISFS publishes no academic criterion, so none should be shown");
+  assert.ok(ids.includes("venture"), "a funding route should be judged on venture stage");
+
+  // A scheme that does publish an academic criterion still gets one.
+  const pmrfIds = buildBasicAssessment(getOpportunity("pmrf"), core({ educationLevel: "Doctoral (PhD)", academicPerformance: "Above 85% or 8.5+ CGPA" }))
+    .initialFit.signals.map((signal) => signal.id);
+  assert.ok(pmrfIds.includes("academic"), "PMRF publishes a strong academic record requirement");
+});
+
+test("an idea with no venture does not look promising for a funding route", () => {
+  const noVenture = core({ educationLevel: "Undergraduate", fieldOfStudy: "Engineering", qualifiers: { startupStage: "No venture yet" } });
+  const result = buildBasicAssessment(sisfs(), noVenture);
+  const venture = result.initialFit.signals.find((signal) => signal.id === "venture");
+  assert.equal(venture.band, "low");
+  assert.equal(result.initialFit.band, "low", "weak evidence should be shown honestly, not softened");
+});
+
+test("every fit band the UI can receive has copy in both languages", () => {
+  const { translations } = require("../lib/i18n.ts");
+  for (const language of ["en", "hi"]) {
+    const result = translations[language].result;
+    for (const key of ["strong", "moderate", "low", "neutral", "notEnough", "eligible", "notEligible", "needsMoreInfo"]) {
+      assert.ok(result[key] && result[key].length > 0, `${language}.result.${key} missing`);
+    }
+  }
+});
+
+test("the guided journey and the walkthrough agree on the same seven routes", () => {
+  const { translations } = require("../lib/i18n.ts");
+  for (const language of ["en", "hi"]) {
+    const journey = translations[language].journey;
+    for (const key of ["discover", "assess", "prepare", "apply", "track", "verification", "payment", "renewal"]) {
+      assert.ok(journey[key] && journey[key].length > 0, `${language}.journey.${key} missing`);
+    }
+  }
+  // Every walkthrough step carries Hindi beside its English.
+  walkthroughSteps.forEach((step) => {
+    assert.ok(step.hi && step.hi.stage && step.hi.title && step.hi.body && step.hi.action, `${step.id} is missing Hindi copy`);
+    assert.notEqual(step.hi.title, step.title, `${step.id} Hindi title should not be the English one`);
   });
 });

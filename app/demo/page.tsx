@@ -6,6 +6,7 @@ import { ArrowRight, CheckCircle2, MinusCircle, Sparkles, TriangleAlert } from "
 import { PageHeader } from "@/components/PageHeader";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useAppState } from "@/components/AppContext";
+import { localise, localiser } from "@/lib/hindi";
 import { canonicalGuidedDemoOpportunityId, getGuidedDemoApplication, getGuidedDemoPaymentApplication, getGuidedDemoRenewalApplication, profile } from "@/lib/data";
 import { getOpportunity } from "@/lib/opportunities";
 
@@ -46,8 +47,9 @@ const curated = [
 ] as const;
 
 export default function DemoDiscoverPage() {
-  const { setGuidedDemoOpportunityId, setDemoState } = useAppState();
-  const [primary, ...alternates] = curated;
+  const { setGuidedDemoOpportunityId, setDemoState, language } = useAppState();
+  const tr = localiser(language);
+  const [primary, ...alternates] = localise(curated, language);
   const primaryOpportunity = getOpportunity(primary.id);
 
   useEffect(() => {
@@ -56,7 +58,7 @@ export default function DemoDiscoverPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader eyebrow="Meet Ananya" title="Start with the scholarship most worth preparing.">
+      <PageHeader eyebrow="Meet Ananya" title={tr("Start with the scholarship most worth preparing.")}>
         Final-year engineering student · 8.3 CGPA · research internship · final-year project
       </PageHeader>
 
@@ -146,7 +148,7 @@ export default function DemoDiscoverPage() {
       <section className="rounded-lg bg-[#EEF2FF] p-4 ring-1 ring-indigo-100">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
-            <h2 className="font-serif text-xl font-bold text-ink">This is discovery with judgment.</h2>
+            <h2 className="font-serif text-xl font-bold text-ink">{tr("This is discovery with judgment.")}</h2>
             <p className="mt-1 text-sm leading-6 text-muted">Disha narrows the field before asking a student to invest time in an application.</p>
           </div>
           <Link href="/opportunities" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-white px-4 py-2 text-sm font-bold text-primary shadow-sm">

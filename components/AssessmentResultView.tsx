@@ -3,20 +3,27 @@
 import clsx from "clsx";
 import { AlertTriangle, CheckCircle2, CircleHelp, Info, TrendingUp } from "lucide-react";
 import { StatusBadge } from "@/components/StatusBadge";
+import { useAppState } from "@/components/AppContext";
+import { translations } from "@/lib/i18n";
 import type { AssessmentResult, FitBand } from "@/lib/opportunities";
 
-const eligibilityCopy = {
-  eligible: { label: "Eligible", tone: "success" as const },
-  ineligible: { label: "Not eligible", tone: "danger" as const },
-  uncertain: { label: "Needs more information", tone: "warning" as const }
-};
+type ResultCopy = Record<keyof (typeof translations)["en"]["result"], string>;
 
-const fitCopy: Record<FitBand, { label: string; tone: "success" | "active" | "warning" | "neutral" }> = {
-  strong: { label: "Strong", tone: "success" },
-  moderate: { label: "Moderate", tone: "active" },
-  low: { label: "Low", tone: "warning" },
-  unknown: { label: "Not enough information", tone: "neutral" }
-};
+const eligibilityTone = { eligible: "success", ineligible: "danger", uncertain: "warning" } as const;
+
+/**
+ * Five distinct readings, never collapsed into each other: positive evidence, partial evidence,
+ * failing evidence, no restriction (a neutral fact) and not enough information.
+ */
+function fitCopyFor(t: ResultCopy): Record<FitBand, { label: string; tone: "success" | "active" | "warning" | "neutral" }> {
+  return {
+    strong: { label: t.strong, tone: "success" },
+    moderate: { label: t.moderate, tone: "active" },
+    low: { label: t.low, tone: "warning" },
+    neutral: { label: t.neutral, tone: "neutral" },
+    unknown: { label: t.notEnough, tone: "neutral" }
+  };
+}
 
 /**
  * The basic result: three separate ideas, never blended into one number.
@@ -25,7 +32,11 @@ const fitCopy: Record<FitBand, { label: string; tone: "success" | "active" | "wa
  * alignment signals. Missing information is stated rather than silently folded into a lower score.
  */
 export function BasicResultView({ result }: { result: AssessmentResult }) {
-  const eligibility = eligibilityCopy[result.eligibility.status];
+  const { language } = useAppState();
+  const t = translations[language].result;
+  const fitCopy = fitCopyFor(t);
+  const eligibilityLabel = result.eligibility.status === "eligible" ? t.eligible : result.eligibility.status === "ineligible" ? t.notEligible : t.needsMoreInfo;
+  const eligibility = { label: eligibilityLabel, tone: eligibilityTone[result.eligibility.status] };
   const fit = fitCopy[result.initialFit.band];
   // A failed hard rule settles the question. The fit band stays visible and truthful, but it is
   // labelled so a strong alignment can never be read as an invitation to apply anyway.
@@ -35,10 +46,10 @@ export function BasicResultView({ result }: { result: AssessmentResult }) {
     <section aria-labelledby="basic-result-heading" className="rounded-2xl bg-white p-6 shadow-soft ring-1 ring-stone-200 sm:p-7">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 id="basic-result-heading" className="text-xs font-black uppercase tracking-[0.16em] text-[#9B6D55]">
-          Initial assessment
+          {t.initialAssessment}
         </h2>
         <span className="text-xs font-bold text-muted">
-          {result.coverage.checkedCriteria} of {result.coverage.totalCriteria} criteria checked
+          {result.coverage.checkedCriteria} / {result.coverage.totalCriteria} {t.criteriaChecked}
         </span>
       </div>
 
@@ -46,14 +57,14 @@ export function BasicResultView({ result }: { result: AssessmentResult }) {
 
       <div className="mt-5 grid gap-3 sm:grid-cols-2">
         <div className="rounded-xl bg-[#FBF7F1] p-4">
-          <p className="text-xs font-bold uppercase tracking-wide text-muted">Eligibility</p>
+          <p className="text-xs font-bold uppercase tracking-wide text-muted">{t.eligibility}</p>
           <div className="mt-2">
             <StatusBadge tone={eligibility.tone}>{eligibility.label}</StatusBadge>
           </div>
         </div>
         <div className="rounded-xl bg-[#FBF7F1] p-4">
           <p className="text-xs font-bold uppercase tracking-wide text-muted">
-            {blocked ? "Fit if you were eligible" : "Initial fit"}
+            {blocked ? t.fitIfEligible : t.initialFit}
           </p>
           <div className="mt-2">
             <StatusBadge tone={blocked ? "neutral" : fit.tone}>{fit.label}</StatusBadge>
@@ -73,7 +84,7 @@ export function BasicResultView({ result }: { result: AssessmentResult }) {
           {result.initialFit.signals.map((signal) => (
             <div key={signal.id} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 py-3">
               <dt className="text-sm font-bold text-ink">{signal.label}</dt>
-              <dd className={clsx("text-sm font-black", bandTextTone(signal.band))}>{fitCopy[signal.band].label}</dd>
+              <dd className={clsx("text-sm font-black", bandTextTone(signal.band))}>{fitCopyFor(t)[signal.band].label}</dd>
               <dd className="w-full text-xs leading-5 text-muted">
                 {signal.explanation}
                 {signal.source ? <span className="text-muted/80"> Source: {signal.source}.</span> : null}
@@ -84,7 +95,7 @@ export function BasicResultView({ result }: { result: AssessmentResult }) {
       ) : null}
 
       <div className="mt-5">
-        <h4 className="text-xs font-black uppercase tracking-wide text-muted">Why</h4>
+        <h4 className="text-xs font-black uppercase tracking-wide text-muted">{t.why}</h4>
         <ul className="mt-2 space-y-2">
           {result.initialFit.reasons.map((reason) => (
             <li key={reason} className="flex gap-2.5 text-sm leading-6 text-slate-700">
@@ -99,7 +110,7 @@ export function BasicResultView({ result }: { result: AssessmentResult }) {
         <div className="mt-5 rounded-xl bg-[#FFF8EC] p-4">
           <h4 className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-amber-900">
             <CircleHelp size={15} aria-hidden="true" />
-            Still needs evidence ({result.initialFit.missingInformation.length})
+            {t.stillNeeds} ({result.initialFit.missingInformation.length})
           </h4>
           <ul className="mt-2 flex flex-wrap gap-1.5">
             {result.initialFit.missingInformation.map((item) => (
@@ -112,7 +123,7 @@ export function BasicResultView({ result }: { result: AssessmentResult }) {
       ) : null}
 
       <details className="mt-5 text-sm">
-        <summary className="cursor-pointer text-xs font-bold text-primary">How this band was decided</summary>
+        <summary className="cursor-pointer text-xs font-bold text-primary">{t.howDecided}</summary>
         <p className="mt-2 text-xs leading-5 text-muted">{result.initialFit.rule}</p>
       </details>
     </section>
@@ -124,23 +135,25 @@ export function BasicResultView({ result }: { result: AssessmentResult }) {
  * it refuses to do below 60% of known selection weight rather than inventing precision.
  */
 export function DeepResultView({ result }: { result: AssessmentResult }) {
+  const { language } = useAppState();
+  const t = translations[language].result;
   const scored = result.competitiveness.score !== null;
 
   return (
     <section aria-labelledby="deep-result-heading" className="rounded-2xl bg-white p-6 shadow-soft ring-1 ring-stone-200 sm:p-7">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 id="deep-result-heading" className="text-xs font-black uppercase tracking-[0.16em] text-[#9B6D55]">
-          Deeper assessment
+          {t.deeperAssessment}
         </h2>
-        <StatusBadge tone="active">Confidence: {result.confidence.level}</StatusBadge>
+        <StatusBadge tone="active">{t.confidence}: {result.confidence.level}</StatusBadge>
       </div>
 
       <p className="mt-4 text-base leading-7 text-slate-700">{result.overallAssessment}</p>
 
       <div className="mt-5 rounded-xl bg-[#FBF7F1] p-4">
-        <p className="text-xs font-bold uppercase tracking-wide text-muted">How competitive this may be</p>
+        <p className="text-xs font-bold uppercase tracking-wide text-muted">{t.competitive}</p>
         <p className="mt-1.5 text-lg font-black text-ink">
-          {scored ? `${result.competitiveness.score}/100 · ${result.competitiveness.band}` : "Not scored yet"}
+          {scored ? `${result.competitiveness.score}/100 · ${result.competitiveness.band}` : t.notScored}
         </p>
         <p className="mt-1 text-xs leading-5 text-muted">
           {scored
@@ -151,18 +164,18 @@ export function DeepResultView({ result }: { result: AssessmentResult }) {
       </div>
 
       <div className="mt-6 grid gap-5 sm:grid-cols-2">
-        <ResultList title="Strengths" icon={TrendingUp} items={result.strengths} empty="No strong evidence captured yet." />
-        <ResultList title="Gaps" icon={AlertTriangle} items={result.gaps.map((gap) => gap.label)} empty="No major gap captured." />
+        <ResultList title={t.strengths} icon={TrendingUp} items={result.strengths} empty="No strong evidence captured yet." />
+        <ResultList title={t.gaps} icon={AlertTriangle} items={result.gaps.map((gap) => gap.label)} empty="No major gap captured." />
       </div>
 
       <div className="mt-6 grid gap-4 sm:grid-cols-2">
-        <Fact label="Strongest evidence" value={result.strongestEvidence} />
-        <Fact label="Biggest gap" value={result.biggestGap?.summary ?? "No single dominant gap."} />
+        <Fact label={t.strongestEvidence} value={result.strongestEvidence} />
+        <Fact label={t.biggestGap} value={result.biggestGap?.summary ?? "—"} />
       </div>
 
       {result.competitiveness.criteria.length ? (
         <div className="mt-6">
-          <h4 className="text-xs font-black uppercase tracking-wide text-muted">What matters most in selection</h4>
+          <h4 className="text-xs font-black uppercase tracking-wide text-muted">{t.whatMatters}</h4>
           <ul className="mt-3 space-y-3">
             {result.competitiveness.criteria
               .slice()
@@ -188,7 +201,7 @@ export function DeepResultView({ result }: { result: AssessmentResult }) {
 
       {result.improvementActions.length ? (
         <div className="mt-6">
-          <h4 className="text-xs font-black uppercase tracking-wide text-muted">What you can improve</h4>
+          <h4 className="text-xs font-black uppercase tracking-wide text-muted">{t.canImprove}</h4>
           <ol className="mt-2 space-y-2">
             {result.improvementActions.map((action, index) => (
               <li key={action} className="flex gap-2.5 text-sm leading-6 text-slate-700">
@@ -205,7 +218,7 @@ export function DeepResultView({ result }: { result: AssessmentResult }) {
       <div className="mt-6 flex items-start gap-2.5 rounded-xl bg-[#EEF2FF] p-4">
         <Info size={17} className="mt-0.5 shrink-0 text-primary" aria-hidden="true" />
         <div>
-          <p className="text-sm font-bold text-ink">Next step</p>
+          <p className="text-sm font-bold text-ink">{t.nextStep}</p>
           <p className="mt-0.5 text-sm leading-6 text-slate-700">{result.nextAction}</p>
         </div>
       </div>
@@ -258,5 +271,6 @@ function bandTextTone(band: FitBand) {
   if (band === "strong") return "text-emerald-700";
   if (band === "moderate") return "text-primary";
   if (band === "low") return "text-amber-800";
+  // neutral and unknown both read as "not counted", so neither borrows a positive colour.
   return "text-muted";
 }

@@ -22,7 +22,7 @@ export function AssistantLauncher() {
       type="button"
       onClick={() => setAssistantOpen(true)}
       aria-label="Open Disha Assistant"
-      className="fixed bottom-4 right-4 z-40 inline-flex min-h-12 items-center gap-2 rounded-full bg-primary px-4 text-sm font-black text-white shadow-soft transition hover:bg-blue-700 print:hidden"
+      className="fixed bottom-4 right-4 z-50 sm:bottom-[10rem] inline-flex min-h-12 items-center gap-2 rounded-full bg-primary px-4 text-sm font-black text-white shadow-soft transition hover:bg-blue-700 print:hidden"
     >
       <Sparkles size={17} aria-hidden="true" />
       Ask Disha
