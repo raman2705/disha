@@ -54,12 +54,12 @@ export default function LandingPage() {
           <DishaWordmark size="lg" settle />
 
           <h1 className="landing-rise mt-9 max-w-3xl font-serif text-[2.75rem] font-black leading-[1.04] tracking-tight text-ink sm:text-6xl lg:text-[4.25rem]">
-            Find the opportunities worth your time.
+            Where do you want to go next?
           </h1>
 
           <p className="landing-rise landing-rise-1 mt-6 max-w-2xl text-lg leading-8 text-slate-700">
-            Disha separates eligibility from competitive fit, shows the evidence behind its assessment, and stays with
-            you from preparation through to payment and renewal.
+            Explore scholarships, fellowships, grants, funding and more, with Disha helping you assess your fit and
+navigate the journey from discovery to application.
           </p>
 
           <form onSubmit={explore} className="landing-rise landing-rise-2 mt-9 max-w-4xl" role="search">
