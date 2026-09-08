@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { canonicalGuidedDemoOpportunityId, DemoState, normalizeDemoState, primaryProfileId } from "@/lib/data";
 import { Language } from "@/lib/i18n";
-import { defaultNormalAssessment, type NormalAssessmentDraft } from "@/lib/normalAssessment";
+import { defaultNormalAssessment, hydrateNormalAssessment, type NormalAssessmentDraft } from "@/lib/normalAssessment";
 export type { NormalAssessmentDraft } from "@/lib/normalAssessment";
 
 type AppContextValue = {
@@ -43,14 +43,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const savedNormalAssessment = window.localStorage.getItem("disha-normal-assessment");
     if (savedNormalAssessment) {
       try {
-        const parsed = JSON.parse(savedNormalAssessment) as Partial<NormalAssessmentDraft>;
-        setNormalAssessmentValue({
-          ...defaultNormalAssessment,
-          ...parsed,
-          evidence: { ...defaultNormalAssessment.evidence, ...parsed.evidence },
-          generated: Boolean(parsed.generated && parsed.assessmentResult),
-          assessmentResult: parsed.assessmentResult ?? null
-        });
+        const hydrated = hydrateNormalAssessment(JSON.parse(savedNormalAssessment));
+        setNormalAssessmentValue(hydrated);
+        // Write the migrated draft back so the stale payload is replaced once, not re-migrated on every load.
+        window.localStorage.setItem("disha-normal-assessment", JSON.stringify(hydrated));
       } catch {
         window.localStorage.removeItem("disha-normal-assessment");
       }

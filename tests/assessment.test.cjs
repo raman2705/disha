@@ -33,6 +33,47 @@ require.extensions[".ts"] = function loadTs(module, filename) {
 
 const { profile } = require("../lib/data.ts");
 const { assistantReply, buildOpportunityAssessmentResult, getOpportunity, sampleAssessmentResponses } = require("../lib/opportunities.ts");
+const {
+  NORMAL_ASSESSMENT_SCHEMA_VERSION,
+  defaultNormalAssessment,
+  finalizeNormalAssessment,
+  hydrateNormalAssessment,
+  isCanonicalAssessmentResult
+} = require("../lib/normalAssessment.ts");
+
+// The draft shape persisted to localStorage before the competitiveness refactor.
+function legacyStoredDraft(overrides = {}) {
+  return {
+    name: "Ananya",
+    institution: "PES University",
+    programme: "B.Tech CSE",
+    income: "Rs 3.5 lakh/year",
+    gender: "Female",
+    opportunityId: "aicte-pragati-scholarship",
+    evidence: { academic: true, income: false, bank: false, identity: true },
+    generated: true,
+    assessmentResult: {
+      opportunityId: "aicte-pragati-scholarship",
+      applicantId: "normal-visitor",
+      eligibility: { status: "Pass", summary: "Looks eligible", basis: ["Female"] },
+      fit: { status: "Moderate", summary: "Moderate fit", basis: [] },
+      readiness: { status: "Weak", summary: "Income proof missing", basis: [] },
+      overallAssessment: "Worth pursuing after one fix.",
+      evaluatorLens: [],
+      evidenceStrength: [],
+      gaps: [],
+      strengths: [],
+      risks: [],
+      effortVsUpside: { effort: "Moderate", upside: "Rs 50,000/year", rationale: "" },
+      recommendation: "Worth pursuing",
+      improvementActions: [],
+      confidence: "Medium",
+      evidenceBasis: [],
+      generatedAt: "2026-09-08T00:00:00+05:30"
+    },
+    ...overrides
+  };
+}
 
 function criterion(overrides) {
   return {
@@ -219,4 +260,75 @@ test("demo scenarios cover strong, moderate, and ineligible outcomes", () => {
   assert.equal(strong.recommendation.verdict, "strong_opportunity");
   assert.equal(moderate.recommendation.verdict, "worth_applying");
   assert.equal(ineligible.recommendation.verdict, "do_not_apply");
+});
+
+test("a legacy fit-shaped result is never handed back to the UI", () => {
+  const legacy = legacyStoredDraft();
+  assert.equal(isCanonicalAssessmentResult(legacy.assessmentResult), false);
+
+  const hydrated = hydrateNormalAssessment(legacy);
+  assert.ok(hydrated.assessmentResult);
+  assert.equal("fit" in hydrated.assessmentResult, false);
+  assert.equal(isCanonicalAssessmentResult(hydrated.assessmentResult), true);
+  // The fields /assess reads must be present, which is exactly what the crash hit.
+  assert.equal(typeof hydrated.assessmentResult.competitiveness.band, "string");
+  assert.equal(hydrated.schemaVersion, NORMAL_ASSESSMENT_SCHEMA_VERSION);
+});
+
+test("legacy inputs survive migration and drive the recomputed result", () => {
+  const hydrated = hydrateNormalAssessment(legacyStoredDraft());
+  assert.equal(hydrated.name, "Ananya");
+  assert.equal(hydrated.institution, "PES University");
+  assert.equal(hydrated.evidence.income, false);
+  assert.equal(hydrated.generated, true);
+  assert.equal(hydrated.assessmentResult.opportunityId, "aicte-pragati-scholarship");
+
+  const expected = finalizeNormalAssessment(hydrated, getOpportunity("aicte-pragati-scholarship"));
+  assert.deepEqual(hydrated.assessmentResult, expected.assessmentResult);
+});
+
+test("a legacy result for an opportunity that no longer exists is dropped, not rendered", () => {
+  const hydrated = hydrateNormalAssessment(legacyStoredDraft({ opportunityId: "retired-scheme-2019" }));
+  assert.equal(hydrated.assessmentResult, null);
+  assert.equal(hydrated.generated, false);
+  assert.equal(hydrated.name, "Ananya");
+});
+
+test("a current canonical result is kept verbatim", () => {
+  const opportunity = getOpportunity("aicte-pragati-scholarship");
+  const saved = finalizeNormalAssessment({ ...defaultNormalAssessment, name: "Ananya", institution: "PES University", programme: "B.Tech CSE" }, opportunity);
+  const hydrated = hydrateNormalAssessment(JSON.parse(JSON.stringify(saved)));
+  assert.deepEqual(hydrated.assessmentResult, saved.assessmentResult);
+  assert.equal(hydrated.generated, true);
+});
+
+test("a truncated or garbage payload falls back to defaults instead of throwing", () => {
+  assert.deepEqual(hydrateNormalAssessment(null), defaultNormalAssessment);
+  assert.deepEqual(hydrateNormalAssessment("nonsense"), defaultNormalAssessment);
+  assert.deepEqual(hydrateNormalAssessment([1, 2, 3]), defaultNormalAssessment);
+
+  const wrongTypes = hydrateNormalAssessment({ goals: "financial support", researchOutputs: null, evidence: "yes", generated: true, assessmentResult: {} });
+  assert.deepEqual(wrongTypes.goals, []);
+  assert.deepEqual(wrongTypes.researchOutputs, []);
+  assert.deepEqual(wrongTypes.evidence, defaultNormalAssessment.evidence);
+  assert.equal(wrongTypes.assessmentResult, null);
+  assert.equal(wrongTypes.generated, false);
+});
+
+test("a canonical result stamped with an older schema version is recomputed", () => {
+  const opportunity = getOpportunity("aicte-pragati-scholarship");
+  const saved = finalizeNormalAssessment({ ...defaultNormalAssessment, name: "Ananya", institution: "PES University", programme: "B.Tech CSE" }, opportunity);
+  const hydrated = hydrateNormalAssessment({ ...JSON.parse(JSON.stringify(saved)), schemaVersion: NORMAL_ASSESSMENT_SCHEMA_VERSION - 1 });
+  assert.equal(hydrated.schemaVersion, NORMAL_ASSESSMENT_SCHEMA_VERSION);
+  assert.deepEqual(hydrated.assessmentResult, saved.assessmentResult);
+});
+
+test("isCanonicalAssessmentResult rejects a result missing competitiveness fields", () => {
+  const opportunity = getOpportunity("aicte-pragati-scholarship");
+  const { assessmentResult } = finalizeNormalAssessment({ ...defaultNormalAssessment, name: "Ananya" }, opportunity);
+  assert.equal(isCanonicalAssessmentResult(assessmentResult), true);
+  assert.equal(isCanonicalAssessmentResult({ ...assessmentResult, competitiveness: undefined }), false);
+  assert.equal(isCanonicalAssessmentResult({ ...assessmentResult, competitiveness: { ...assessmentResult.competitiveness, band: "Moderate" } }), false);
+  assert.equal(isCanonicalAssessmentResult({ ...assessmentResult, eligibility: { status: "Pass", summary: "", basis: [] } }), false);
+  assert.equal(isCanonicalAssessmentResult({ ...assessmentResult, recommendationKey: "Worth pursuing" }), false);
 });

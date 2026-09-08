@@ -68,9 +68,8 @@ export default function AssessmentClient({ opportunity, initialAsk: _initialAsk 
   }, [isDemoPragati, setDemoState]);
 
   useEffect(() => {
-    const saved = window.localStorage.getItem(storageKey);
-    if (saved) {
-      const parsed = JSON.parse(saved) as Record<string, string>;
+    const parsed = readStoredResponses(storageKey);
+    if (parsed) {
       if (Object.values(parsed).some(Boolean) || !guidedDemoActive || guidedDemoOpportunityId !== opportunity.id) {
         setResponses(parsed);
         return;
@@ -360,6 +359,26 @@ export default function AssessmentClient({ opportunity, initialAsk: _initialAsk 
       </section>
     </div>
   );
+}
+
+/**
+ * Saved answers are user data written by an earlier build. Read them defensively: a corrupt blob
+ * or a value that is no longer a plain string must never take the assessment page down.
+ */
+function readStoredResponses(storageKey: string): Record<string, string> | null {
+  const saved = window.localStorage.getItem(storageKey);
+  if (!saved) return null;
+
+  try {
+    const parsed: unknown = JSON.parse(saved);
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null;
+    return Object.fromEntries(
+      Object.entries(parsed as Record<string, unknown>).filter((entry): entry is [string, string] => typeof entry[1] === "string")
+    );
+  } catch {
+    window.localStorage.removeItem(storageKey);
+    return null;
+  }
 }
 
 function decisionHeadline(assessment: ReturnType<typeof buildOpportunityAssessmentResult>) {

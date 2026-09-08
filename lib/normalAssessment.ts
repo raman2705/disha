@@ -1,7 +1,14 @@
 import { profile, type DemoProfile } from "@/lib/data";
-import { buildOpportunityAssessmentResult, type AssessmentResult, type Opportunity } from "@/lib/opportunities";
+import { buildOpportunityAssessmentResult, getOpportunity, type AssessmentResult, type Opportunity } from "@/lib/opportunities";
+
+/**
+ * Bumped whenever the persisted draft or the canonical AssessmentResult shape changes.
+ * Anything persisted under an older version is re-derived from the canonical engine on read.
+ */
+export const NORMAL_ASSESSMENT_SCHEMA_VERSION = 2;
 
 export type NormalAssessmentDraft = {
+  schemaVersion: number;
   name: string;
   age: string;
   citizenship: string;
@@ -43,6 +50,7 @@ export type NormalAssessmentDraft = {
 };
 
 export const defaultNormalAssessment: NormalAssessmentDraft = {
+  schemaVersion: NORMAL_ASSESSMENT_SCHEMA_VERSION,
   name: "",
   age: "",
   citizenship: "Indian",
@@ -86,6 +94,7 @@ export const defaultNormalAssessment: NormalAssessmentDraft = {
 export function finalizeNormalAssessment(draft: NormalAssessmentDraft, opportunity: Opportunity): NormalAssessmentDraft {
   const preparedDraft = {
     ...draft,
+    schemaVersion: NORMAL_ASSESSMENT_SCHEMA_VERSION,
     opportunityId: opportunity.id,
     generated: true
   };
@@ -98,6 +107,120 @@ export function finalizeNormalAssessment(draft: NormalAssessmentDraft, opportuni
 
 export function computeNormalAssessmentResult(draft: NormalAssessmentDraft, opportunity: Opportunity): AssessmentResult {
   return buildOpportunityAssessmentResult(opportunity, responsesFromNormalAssessment(draft, opportunity), buildNormalApplicant(draft));
+}
+
+/**
+ * Single read boundary for the persisted draft.
+ *
+ * A persisted `assessmentResult` is a cache of a derived value, never a source of truth: the
+ * canonical engine in `lib/opportunities` owns the shape. Anything read back from storage is
+ * therefore validated against the current canonical schema and, when it does not match (a draft
+ * written before the competitiveness refactor still carries the old `fit`/`readiness` object),
+ * re-derived from the persisted inputs instead of being handed to the UI.
+ */
+export function hydrateNormalAssessment(raw: unknown): NormalAssessmentDraft {
+  const parsed = isRecord(raw) ? raw : {};
+  const draft: NormalAssessmentDraft = {
+    ...defaultNormalAssessment,
+    ...(parsed as Partial<NormalAssessmentDraft>),
+    schemaVersion: NORMAL_ASSESSMENT_SCHEMA_VERSION,
+    researchOutputs: stringList(parsed.researchOutputs, defaultNormalAssessment.researchOutputs),
+    experienceAreas: stringList(parsed.experienceAreas, defaultNormalAssessment.experienceAreas),
+    goals: stringList(parsed.goals, defaultNormalAssessment.goals),
+    opportunityInterests: stringList(parsed.opportunityInterests, defaultNormalAssessment.opportunityInterests),
+    evidence: {
+      academic: boolish(isRecord(parsed.evidence) ? parsed.evidence.academic : undefined, defaultNormalAssessment.evidence.academic),
+      income: boolish(isRecord(parsed.evidence) ? parsed.evidence.income : undefined, defaultNormalAssessment.evidence.income),
+      bank: boolish(isRecord(parsed.evidence) ? parsed.evidence.bank : undefined, defaultNormalAssessment.evidence.bank),
+      identity: boolish(isRecord(parsed.evidence) ? parsed.evidence.identity : undefined, defaultNormalAssessment.evidence.identity)
+    },
+    generated: false,
+    assessmentResult: null
+  };
+
+  const storedVersion = typeof parsed.schemaVersion === "number" ? parsed.schemaVersion : 0;
+  const storedResult = parsed.assessmentResult;
+  const wasGenerated = Boolean(parsed.generated && isRecord(storedResult));
+
+  if (!wasGenerated) return draft;
+
+  // A result written by the current engine can be trusted as-is.
+  if (storedVersion === NORMAL_ASSESSMENT_SCHEMA_VERSION && isCanonicalAssessmentResult(storedResult)) {
+    return { ...draft, generated: true, assessmentResult: storedResult };
+  }
+
+  // Otherwise the inputs survive but the derived result does not: recompute it canonically.
+  const opportunity = draft.opportunityId ? getOpportunity(draft.opportunityId) : undefined;
+  if (!opportunity) return draft;
+  return finalizeNormalAssessment(draft, opportunity);
+}
+
+/**
+ * Structural check against the canonical `AssessmentResult` contract. Only the fields the UI and
+ * the assistant actually read are asserted, so adding an optional field does not invalidate
+ * previously persisted results.
+ */
+export function isCanonicalAssessmentResult(value: unknown): value is AssessmentResult {
+  if (!isRecord(value)) return false;
+  if (typeof value.opportunityId !== "string" || typeof value.opportunityName !== "string") return false;
+
+  const eligibility = value.eligibility;
+  if (!isRecord(eligibility)) return false;
+  if (!isOneOf(eligibility.status, ELIGIBILITY_STATUSES)) return false;
+  if (!Array.isArray(eligibility.conditions) || !Array.isArray(eligibility.blockers)) return false;
+
+  const competitiveness = value.competitiveness;
+  if (!isRecord(competitiveness)) return false;
+  if (competitiveness.score !== null && typeof competitiveness.score !== "number") return false;
+  if (!isOneOf(competitiveness.band, COMPETITIVENESS_BANDS)) return false;
+  if (typeof competitiveness.assessedWeightPercent !== "number") return false;
+  if (!Array.isArray(competitiveness.criteria)) return false;
+
+  const confidence = value.confidence;
+  if (!isRecord(confidence) || !isOneOf(confidence.level, CONFIDENCE_LEVELS)) return false;
+
+  const recommendation = value.recommendation;
+  if (!isRecord(recommendation) || typeof recommendation.verdict !== "string" || typeof recommendation.explanation !== "string") return false;
+
+  const effortVsUpside = value.effortVsUpside;
+  if (!isRecord(effortVsUpside) || typeof effortVsUpside.effort !== "string") return false;
+
+  if (!isOneOf(value.recommendationKey, RECOMMENDATION_KEYS)) return false;
+  if (typeof value.recommendationLabel !== "string") return false;
+  if (!Array.isArray(value.strengths) || !Array.isArray(value.gaps) || !Array.isArray(value.improvementActions)) return false;
+  if (typeof value.overallAssessment !== "string" || typeof value.strongestEvidence !== "string" || typeof value.nextAction !== "string") return false;
+  if (value.biggestGap !== null && !isRecord(value.biggestGap)) return false;
+
+  return true;
+}
+
+const ELIGIBILITY_STATUSES = ["eligible", "ineligible", "uncertain"] as const;
+const COMPETITIVENESS_BANDS = ["strong", "competitive", "developing", "weak", "unknown"] as const;
+const CONFIDENCE_LEVELS = ["high", "medium", "low"] as const;
+const RECOMMENDATION_KEYS = [
+  "strongly_pursue",
+  "worth_pursuing",
+  "pursue_after_improving",
+  "low_priority",
+  "verify_eligibility",
+  "do_not_apply",
+  "insufficient_information"
+] as const;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isOneOf(value: unknown, allowed: readonly string[]) {
+  return typeof value === "string" && allowed.includes(value);
+}
+
+function stringList(value: unknown, fallback: string[]) {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [...fallback];
+}
+
+function boolish(value: unknown, fallback: boolean) {
+  return typeof value === "boolean" ? value : fallback;
 }
 
 export function buildNormalApplicant(draft?: NormalAssessmentDraft): DemoProfile {
