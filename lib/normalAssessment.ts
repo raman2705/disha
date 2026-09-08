@@ -1,50 +1,24 @@
-import { profile, type DemoProfile } from "@/lib/data";
-import { buildOpportunityAssessmentResult, getOpportunity, type AssessmentResult, type Opportunity } from "@/lib/opportunities";
+import { type DemoProfile } from "@/lib/data";
+import { applicantFromCoreProfile, buildBasicAssessment, buildDeepAssessment, defaultCoreProfile, deepQuestions } from "@/lib/assessmentFlow";
+import { getOpportunity, type AssessmentResult, type CoreProfile, type Opportunity } from "@/lib/opportunities";
 
 /**
  * Bumped whenever the persisted draft or the canonical AssessmentResult shape changes.
  * Anything persisted under an older version is re-derived from the canonical engine on read.
+ *
+ * v3 split the single flat questionnaire into a core profile plus opt-in deep answers, and added
+ * depth/initialFit/coverage to the result.
  */
-export const NORMAL_ASSESSMENT_SCHEMA_VERSION = 2;
+export const NORMAL_ASSESSMENT_SCHEMA_VERSION = 3;
 
 export type NormalAssessmentDraft = {
   schemaVersion: number;
   name: string;
-  age: string;
-  citizenship: string;
-  city: string;
-  currentStatus: "student" | "working" | "researcher" | "founder" | "other" | "";
-  institution: string;
-  programme: string;
-  highestQualification: string;
-  field: string;
-  currentYear: string;
-  graduationYear: string;
-  cgpa: string;
-  income: string;
-  gender: string;
-  researchExperience: "no" | "coursework project" | "research internship" | "thesis/dissertation" | "independent research" | "multiple research experiences" | "";
-  researchOutputs: string[];
-  workExperience: "none" | "under 6 months" | "6-12 months" | "1-2 years" | "2-5 years" | "5+ years" | "";
-  experienceAreas: string[];
-  ownership: "mainly assisted" | "owned individual tasks" | "owned a project/workstream" | "led multiple projects/team" | "";
-  measurableOutcomes: "yes" | "no" | "unsure" | "";
-  leadership: "no" | "informally" | "led a small project/team" | "held a formal leadership role" | "led significant teams/programs" | "";
-  largestTeam: "1-5" | "6-10" | "11-25" | "25+" | "";
-  leadershipDuration: "one-off" | "under 3 months" | "3-12 months" | "1+ year" | "";
-  impactExperience: "none" | "occasional volunteering" | "regular volunteering" | "led an initiative" | "built/ran sustained program" | "";
-  impactReach: "under 50" | "50-250" | "250-1000" | "1000+" | "unknown/not applicable" | "";
-  startupStage: "none" | "exploring idea" | "idea validated" | "prototype/MVP" | "active users" | "revenue" | "funded/incubated" | "";
-  goals: string[];
-  opportunityInterests: string[];
-  effortTolerance: "quick applications only" | "a few hours" | "several days" | "willing to invest significant effort for a strong opportunity" | "";
   opportunityId: string;
-  evidence: {
-    academic: boolean;
-    income: boolean;
-    bank: boolean;
-    identity: boolean;
-  };
+  /** The seven core answers plus any opportunity qualifiers. Enough for eligibility and initial fit. */
+  core: CoreProfile;
+  /** Opportunity-specific deep answers, keyed by question id. Empty until the user opts in. */
+  deepAnswers: Record<string, string>;
   generated: boolean;
   assessmentResult: AssessmentResult | null;
 };
@@ -52,61 +26,45 @@ export type NormalAssessmentDraft = {
 export const defaultNormalAssessment: NormalAssessmentDraft = {
   schemaVersion: NORMAL_ASSESSMENT_SCHEMA_VERSION,
   name: "",
-  age: "",
-  citizenship: "Indian",
-  city: "",
-  currentStatus: "",
-  institution: "",
-  programme: "",
-  highestQualification: "",
-  field: "",
-  currentYear: "",
-  graduationYear: "",
-  cgpa: "",
-  income: "",
-  gender: "",
-  researchExperience: "",
-  researchOutputs: [],
-  workExperience: "",
-  experienceAreas: [],
-  ownership: "",
-  measurableOutcomes: "",
-  leadership: "",
-  largestTeam: "",
-  leadershipDuration: "",
-  impactExperience: "",
-  impactReach: "",
-  startupStage: "",
-  goals: [],
-  opportunityInterests: [],
-  effortTolerance: "",
   opportunityId: "",
-  evidence: {
-    academic: true,
-    income: false,
-    bank: false,
-    identity: true
-  },
+  core: defaultCoreProfile,
+  deepAnswers: {},
   generated: false,
   assessmentResult: null
 };
 
+/**
+ * Recomputes the draft's result through the canonical engine.
+ *
+ * Depth follows the evidence: a draft with no deep answers gets a basic result, and one with any
+ * deep answer gets a deep result. Both come from the same builder, so the two tiers can never
+ * disagree about eligibility.
+ */
 export function finalizeNormalAssessment(draft: NormalAssessmentDraft, opportunity: Opportunity): NormalAssessmentDraft {
-  const preparedDraft = {
+  const preparedDraft: NormalAssessmentDraft = {
     ...draft,
     schemaVersion: NORMAL_ASSESSMENT_SCHEMA_VERSION,
     opportunityId: opportunity.id,
     generated: true
   };
 
-  return {
-    ...preparedDraft,
-    assessmentResult: computeNormalAssessmentResult(preparedDraft, opportunity)
-  };
+  return { ...preparedDraft, assessmentResult: computeNormalAssessmentResult(preparedDraft, opportunity) };
 }
 
 export function computeNormalAssessmentResult(draft: NormalAssessmentDraft, opportunity: Opportunity): AssessmentResult {
-  return buildOpportunityAssessmentResult(opportunity, responsesFromNormalAssessment(draft, opportunity), buildNormalApplicant(draft));
+  const answered = Object.values(draft.deepAnswers ?? {}).some(Boolean);
+  return answered
+    ? buildDeepAssessment(opportunity, draft.core, draft.deepAnswers, draft.name)
+    : buildBasicAssessment(opportunity, draft.core, draft.name);
+}
+
+export function buildNormalApplicant(draft?: NormalAssessmentDraft): DemoProfile {
+  return applicantFromCoreProfile(draft?.core ?? defaultCoreProfile, draft?.name?.trim() || "you");
+}
+
+/** How many of an opportunity's deep questions are still unanswered, for the reuse message. */
+export function remainingDeepQuestions(draft: NormalAssessmentDraft, opportunity: Opportunity) {
+  return deepQuestions(opportunity).filter((question) => !draft.deepAnswers?.[question.id]).length;
 }
 
 /**
@@ -115,25 +73,18 @@ export function computeNormalAssessmentResult(draft: NormalAssessmentDraft, oppo
  * A persisted `assessmentResult` is a cache of a derived value, never a source of truth: the
  * canonical engine in `lib/opportunities` owns the shape. Anything read back from storage is
  * therefore validated against the current canonical schema and, when it does not match (a draft
- * written before the competitiveness refactor still carries the old `fit`/`readiness` object),
- * re-derived from the persisted inputs instead of being handed to the UI.
+ * written before the competitiveness refactor, or before the basic/deep split), re-derived from
+ * the persisted inputs instead of being handed to the UI.
  */
 export function hydrateNormalAssessment(raw: unknown): NormalAssessmentDraft {
   const parsed = isRecord(raw) ? raw : {};
   const draft: NormalAssessmentDraft = {
     ...defaultNormalAssessment,
-    ...(parsed as Partial<NormalAssessmentDraft>),
     schemaVersion: NORMAL_ASSESSMENT_SCHEMA_VERSION,
-    researchOutputs: stringList(parsed.researchOutputs, defaultNormalAssessment.researchOutputs),
-    experienceAreas: stringList(parsed.experienceAreas, defaultNormalAssessment.experienceAreas),
-    goals: stringList(parsed.goals, defaultNormalAssessment.goals),
-    opportunityInterests: stringList(parsed.opportunityInterests, defaultNormalAssessment.opportunityInterests),
-    evidence: {
-      academic: boolish(isRecord(parsed.evidence) ? parsed.evidence.academic : undefined, defaultNormalAssessment.evidence.academic),
-      income: boolish(isRecord(parsed.evidence) ? parsed.evidence.income : undefined, defaultNormalAssessment.evidence.income),
-      bank: boolish(isRecord(parsed.evidence) ? parsed.evidence.bank : undefined, defaultNormalAssessment.evidence.bank),
-      identity: boolish(isRecord(parsed.evidence) ? parsed.evidence.identity : undefined, defaultNormalAssessment.evidence.identity)
-    },
+    name: typeof parsed.name === "string" ? parsed.name : "",
+    opportunityId: typeof parsed.opportunityId === "string" ? parsed.opportunityId : "",
+    core: hydrateCoreProfile(parsed),
+    deepAnswers: stringMap(parsed.deepAnswers),
     generated: false,
     assessmentResult: null
   };
@@ -156,20 +107,53 @@ export function hydrateNormalAssessment(raw: unknown): NormalAssessmentDraft {
 }
 
 /**
- * Reconciles the /assess form's local working copy with the stored draft.
- *
- * AppProvider reads localStorage in an effect, so on a hard load the form mounts *before* the
- * stored draft exists and its initial snapshot is the empty default — which is why a returning
- * visitor saw "Pending" on reload while /path and /applications showed the saved assessment.
- * Mirror the stored draft into the form until the visitor edits it; once they have, the local
- * copy wins and later context updates must not clobber the edit in progress.
+ * Reads the core profile out of a stored draft, including drafts written before the core profile
+ * existed. Pre-v3 drafts kept the same facts under flat keys, so those are carried across rather
+ * than thrown away; anything that cannot be mapped is simply left blank and asked again.
  */
-export function resolveWorkingDraft(
-  working: NormalAssessmentDraft,
-  stored: NormalAssessmentDraft,
-  edited: boolean
-): NormalAssessmentDraft {
-  return edited || working === stored ? working : stored;
+function hydrateCoreProfile(parsed: Record<string, unknown>): CoreProfile {
+  const stored = isRecord(parsed.core) ? parsed.core : {};
+  const legacy = legacyCoreFields(parsed);
+  const pick = (key: keyof CoreProfile) => {
+    const value = stored[key];
+    if (typeof value === "string" && value) return value;
+    return legacy.fields[key] ?? "";
+  };
+
+  return {
+    ageBand: pick("ageBand"),
+    domicile: pick("domicile"),
+    educationLevel: pick("educationLevel"),
+    fieldOfStudy: pick("fieldOfStudy"),
+    yearStatus: pick("yearStatus"),
+    academicPerformance: pick("academicPerformance"),
+    householdIncome: pick("householdIncome"),
+    qualifiers: {
+      ...legacy.qualifiers,
+      ...stringMap(isRecord(stored) ? stored.qualifiers : undefined)
+    }
+  };
+}
+
+function legacyCoreFields(parsed: Record<string, unknown>): { fields: Record<string, string>; qualifiers: Record<string, string> } {
+  const text = (key: string) => (typeof parsed[key] === "string" ? (parsed[key] as string) : "");
+  const qualification = text("highestQualification").toLowerCase();
+  const educationLevel = qualification.includes("phd") || qualification.includes("doctor")
+    ? "Doctoral (PhD)"
+    : qualification.includes("post") || qualification.includes("pg") || qualification.includes("master")
+      ? "Postgraduate"
+      : qualification.includes("under") || qualification.includes("ug") || qualification.includes("bachelor")
+        ? "Undergraduate"
+        : "";
+
+  return {
+    fields: {
+      fieldOfStudy: text("field"),
+      educationLevel,
+      domicile: text("city").split(",").pop()?.trim() ?? ""
+    },
+    qualifiers: text("gender") ? { gender: text("gender") } : {}
+  };
 }
 
 /**
@@ -180,11 +164,20 @@ export function resolveWorkingDraft(
 export function isCanonicalAssessmentResult(value: unknown): value is AssessmentResult {
   if (!isRecord(value)) return false;
   if (typeof value.opportunityId !== "string" || typeof value.opportunityName !== "string") return false;
+  if (!isOneOf(value.depth, DEPTHS)) return false;
 
   const eligibility = value.eligibility;
   if (!isRecord(eligibility)) return false;
   if (!isOneOf(eligibility.status, ELIGIBILITY_STATUSES)) return false;
   if (!Array.isArray(eligibility.conditions) || !Array.isArray(eligibility.blockers)) return false;
+
+  const initialFit = value.initialFit;
+  if (!isRecord(initialFit)) return false;
+  if (!isOneOf(initialFit.band, FIT_BANDS)) return false;
+  if (!Array.isArray(initialFit.signals) || !Array.isArray(initialFit.reasons) || !Array.isArray(initialFit.missingInformation)) return false;
+
+  const coverage = value.coverage;
+  if (!isRecord(coverage) || typeof coverage.checkedCriteria !== "number" || typeof coverage.totalCriteria !== "number") return false;
 
   const competitiveness = value.competitiveness;
   if (!isRecord(competitiveness)) return false;
@@ -211,6 +204,24 @@ export function isCanonicalAssessmentResult(value: unknown): value is Assessment
   return true;
 }
 
+/**
+ * Reconciles the /assess form's local working copy with the stored draft.
+ *
+ * AppProvider reads localStorage in an effect, so on a hard load the form mounts *before* the
+ * stored draft exists and its initial snapshot is the empty default. Mirror the stored draft into
+ * the form until the visitor edits it; once they have, the local copy wins and later context
+ * updates must not clobber the edit in progress.
+ */
+export function resolveWorkingDraft(
+  working: NormalAssessmentDraft,
+  stored: NormalAssessmentDraft,
+  edited: boolean
+): NormalAssessmentDraft {
+  return edited || working === stored ? working : stored;
+}
+
+const DEPTHS = ["basic", "deep"] as const;
+const FIT_BANDS = ["strong", "moderate", "low", "unknown"] as const;
 const ELIGIBILITY_STATUSES = ["eligible", "ineligible", "uncertain"] as const;
 const COMPETITIVENESS_BANDS = ["strong", "competitive", "developing", "weak", "unknown"] as const;
 const CONFIDENCE_LEVELS = ["high", "medium", "low"] as const;
@@ -232,117 +243,7 @@ function isOneOf(value: unknown, allowed: readonly string[]) {
   return typeof value === "string" && allowed.includes(value);
 }
 
-function stringList(value: unknown, fallback: string[]) {
-  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [...fallback];
-}
-
-function boolish(value: unknown, fallback: boolean) {
-  return typeof value === "boolean" ? value : fallback;
-}
-
-export function buildNormalApplicant(draft?: NormalAssessmentDraft): DemoProfile {
-  const name = draft?.name?.trim() || "you";
-  const institution = draft?.institution?.trim() || "your institution";
-  const programme = draft?.programme?.trim() || "your programme";
-  const income = draft?.income?.trim() || "not provided";
-  const gender = draft?.gender?.trim() || "not provided";
-  const role = draft?.currentStatus ? `${draft.currentStatus} profile` : programme;
-
-  return {
-    ...profile,
-    id: "normal-visitor",
-    name,
-    initials: name === "you" ? "YO" : name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase(),
-    role,
-    college: institution,
-    institutionType: institution.toLowerCase().includes("aicte") ? "AICTE-approved" : "Not confirmed",
-    location: draft?.city?.trim() || "",
-    programme,
-    course: draft?.field?.trim() || programme,
-    year: draft?.currentYear?.trim() || draft?.graduationYear?.trim() || "",
-    cgpa: draft?.cgpa?.trim() || (draft?.evidence.academic ? "Academic or role proof added" : "Academic or role proof not added"),
-    income,
-    gender,
-    bank: draft?.evidence.bank ? "Added" : "Not added",
-    aadhaar: draft?.evidence.identity ? "Added" : "Not added",
-    interests: [...(draft?.goals ?? []), ...(draft?.opportunityInterests ?? [])],
-    strengths: draft?.generated ? buildProfileStrengths(draft) : [],
-    gaps: draft?.generated ? ["Disha needs more factual evidence to be confident"] : [],
-    evidence: [
-      draft?.evidence.identity ? { id: "identity", label: "Identity details", summary: "Identity details confirmed", source: "self-reported" as const } : null,
-      draft?.evidence.academic ? { id: "academic", label: "Academic or role proof", summary: "Academic or role proof available", source: "self-reported" as const } : null,
-      draft?.evidence.income ? { id: "income", label: "Income proof", summary: "Income proof available", source: "self-reported" as const } : null,
-      draft?.evidence.bank ? { id: "bank", label: "Bank details", summary: "Bank details available", source: "self-reported" as const } : null,
-      draft?.researchExperience && draft.researchExperience !== "no" ? { id: "research", label: "Research", summary: `${draft.researchExperience}${draft.researchOutputs.length ? ` with ${draft.researchOutputs.join(", ")}` : ""}`, source: "activity" as const } : null,
-      draft?.ownership ? { id: "work", label: "Work or project ownership", summary: `${draft.ownership}${draft.measurableOutcomes ? `; measurable outcomes: ${draft.measurableOutcomes}` : ""}`, source: "activity" as const } : null,
-      draft?.leadership && draft.leadership !== "no" ? { id: "leadership", label: "Leadership", summary: `${draft.leadership}${draft.largestTeam ? ` for ${draft.largestTeam} people` : ""}${draft.leadershipDuration ? ` over ${draft.leadershipDuration}` : ""}`, source: "activity" as const } : null,
-      draft?.impactExperience && draft.impactExperience !== "none" ? { id: "impact", label: "Impact", summary: `${draft.impactExperience}; reach ${draft.impactReach || "unknown"}`, source: "activity" as const } : null,
-      draft?.startupStage && draft.startupStage !== "none" ? { id: "startup", label: "Startup stage", summary: draft.startupStage, source: "activity" as const } : null
-    ].filter(Boolean) as DemoProfile["evidence"]
-  };
-}
-
-export function responsesFromNormalAssessment(draft: NormalAssessmentDraft | undefined, opportunity: Opportunity): Record<string, string> {
-  if (!draft?.generated) return {};
-  if (opportunity.category === "Startup Funding") return startupResponses(draft);
-  if (opportunity.category === "Research Grants") return researchResponses(draft);
-  if (opportunity.category === "Fellowships") return fellowshipResponses(draft);
-  if (opportunity.category === "Government Schemes") return governmentSchemeResponses(draft);
-  return scholarshipResponses(draft);
-}
-
-function startupResponses(draft: NormalAssessmentDraft): Record<string, string> {
-  return {
-    problemEvidence: draft.measurableOutcomes === "yes" ? "Documented field research" : draft.evidence.academic ? "Founder interviews" : "Desk research",
-    prototype: ["active users", "revenue", "funded/incubated"].includes(draft.startupStage) ? "Working prototype tested with users" : draft.startupStage === "prototype/MVP" ? "Clickable prototype" : "Idea only",
-    team: draft.ownership === "led multiple projects/team" || draft.leadership === "led significant teams/programs" ? "Product, field and partnerships covered" : draft.programme.trim() ? "Solo founder" : "",
-    fundUse: draft.evidence.bank ? "High-level budget" : "Not drafted",
-    incubation: draft.evidence.identity ? "No incubator yet" : "",
-    impactEvidence: draft.impactExperience === "led an initiative" || draft.impactExperience === "built/ran sustained program" || draft.measurableOutcomes === "yes" ? "Clear outcome metric" : "Impact not defined",
-    scalePlan: draft.ownership === "led multiple projects/team" ? "One partner ready" : "No scale plan"
-  };
-}
-
-function researchResponses(draft: NormalAssessmentDraft): Record<string, string> {
-  return {
-    novelty: draft.researchExperience === "independent research" || draft.researchExperience === "multiple research experiences" ? "Defined gap with preliminary result" : draft.evidence.academic ? "Defined literature gap" : "Broad idea",
-    method: draft.programme.trim() ? "Method drafted" : "Method not drafted",
-    trackRecord: draft.researchOutputs.some((output) => ["publication", "preprint", "conference presentation"].includes(output)) ? "Relevant publications" : draft.evidence.academic ? "Early researcher" : "",
-    outcomes: draft.researchOutputs.length ? "Outputs listed" : "Outputs not clear"
-  };
-}
-
-function fellowshipResponses(draft: NormalAssessmentDraft): Record<string, string> {
-  return {
-    researchFit: draft.programme.trim() ? "Clear research area" : "General interest",
-    host: draft.institution.trim() ? "Conversation started" : "Not identified",
-    documents: draft.evidence.academic ? "Draft documents" : "Not started"
-  };
-}
-
-function scholarshipResponses(draft: NormalAssessmentDraft): Record<string, string> {
-  return {
-    eligibilityProof: draft.evidence.identity && draft.gender ? "Eligible but one document pending" : "Eligibility unclear",
-    academicEvidence: draft.evidence.academic ? "Academic record visible but enrolment proof pending" : "Academic record unclear",
-    readinessProof: draft.evidence.income && draft.evidence.bank ? "Records aligned" : "One correction needed"
-  };
-}
-
-function governmentSchemeResponses(draft: NormalAssessmentDraft): Record<string, string> {
-  return {
-    applicantFit: draft.evidence.identity ? "Likely fit" : "Fit unclear",
-    documents: draft.evidence.academic || draft.evidence.income ? "Draft documents" : "Not started",
-    authority: draft.institution.trim() ? "Conversation started" : "Not identified"
-  };
-}
-
-function buildProfileStrengths(draft: NormalAssessmentDraft) {
-  return [
-    draft.cgpa ? `Academic record: ${draft.cgpa}` : "",
-    draft.researchExperience && draft.researchExperience !== "no" ? `Research: ${draft.researchExperience}` : "",
-    draft.ownership ? `Ownership: ${draft.ownership}` : "",
-    draft.leadership && draft.leadership !== "no" ? `Leadership: ${draft.leadership}` : "",
-    draft.impactExperience && draft.impactExperience !== "none" ? `Impact: ${draft.impactExperience}` : "",
-    draft.startupStage && draft.startupStage !== "none" ? `Startup stage: ${draft.startupStage}` : ""
-  ].filter(Boolean);
+function stringMap(value: unknown): Record<string, string> {
+  if (!isRecord(value)) return {};
+  return Object.fromEntries(Object.entries(value).filter((entry): entry is [string, string] => typeof entry[1] === "string"));
 }

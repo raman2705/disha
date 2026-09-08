@@ -50,6 +50,54 @@ export type EvidenceFact = {
   summary: string;
 };
 
+/**
+ * The minimum information Disha asks before it will say anything: enough to run an opportunity's
+ * hard eligibility rules and to place a few named alignment signals. Everything deeper is opt-in.
+ */
+export type CoreProfile = {
+  ageBand: string;
+  domicile: string;
+  educationLevel: string;
+  fieldOfStudy: string;
+  yearStatus: string;
+  academicPerformance: string;
+  householdIncome: string;
+  /** Opportunity-specific answers asked only where a hard rule genuinely needs them. */
+  qualifiers: Record<string, string>;
+};
+
+export type FitBand = "strong" | "moderate" | "low" | "unknown";
+export type AssessmentDepth = "basic" | "deep";
+
+/**
+ * One named alignment signal. Every field exists so the UI can show the trace: what the applicant
+ * said, what it was compared against, and where that comparison came from.
+ */
+export type InitialFitSignal = {
+  id: string;
+  label: string;
+  band: FitBand;
+  userValue: string;
+  comparedWith: string;
+  explanation: string;
+  source?: string;
+  /**
+   * False for signals that are informational only. A fuzzy match against published prose can
+   * confirm a fit but must never be the reason one is downgraded, so it is shown and explained
+   * without entering the aggregate.
+   */
+  affectsBand: boolean;
+};
+
+export type InitialFit = {
+  band: FitBand;
+  /** The aggregation rule in words, so the band is never an unexplained verdict. */
+  rule: string;
+  signals: InitialFitSignal[];
+  reasons: string[];
+  missingInformation: string[];
+};
+
 export type AssessmentResult = {
   opportunityId: string;
   profileId?: string;
@@ -67,6 +115,15 @@ export type AssessmentResult = {
       source?: string;
     }[];
     blockers: string[];
+  };
+  /** "basic" was produced from the core profile alone; "deep" also used opportunity questions. */
+  depth: AssessmentDepth;
+  initialFit: InitialFit;
+  coverage: {
+    checkedCriteria: number;
+    totalCriteria: number;
+    answeredQuestions: number;
+    remainingQuestions: number;
   };
   competitiveness: {
     score: number | null;
@@ -715,7 +772,7 @@ export const opportunities: Opportunity[] = [
     eligibility: ["Woman student", "AICTE-approved institution", "Family income within notified limit"],
     eligibilityRules: [
       { id: "woman-student", label: "Woman student", profileField: "gender", operator: "equals", value: "Female", source: "AICTE / NSP scholarship information", confidence: "high" },
-      { id: "technical-programme", label: "Technical degree or diploma programme", profileField: "programme", operator: "includes", value: "B.Tech", source: "AICTE / NSP scholarship information", confidence: "high" },
+      { id: "technical-programme", label: "Technical degree or diploma programme", profileField: "course", operator: "one_of", value: ["engineering", "technology", "technical", "computer", "electronics", "mechanical", "civil", "pharmacy", "architecture", "diploma", "b.tech", "b.e"], source: "AICTE / NSP scholarship information", confidence: "high" },
       { id: "approved-institution", label: "AICTE-approved institution", profileField: "institutionType", operator: "equals", value: "AICTE-approved", source: "AICTE / NSP scholarship information", confidence: "high" },
       { id: "income-limit", label: "Family income within Rs 8 lakh", profileField: "income", operator: "lte", value: 8, source: "AICTE / NSP scholarship information", confidence: "high" }
     ],
@@ -1569,25 +1626,40 @@ export function buildOpportunityAssessmentResult(
   opportunity: Opportunity,
   responses: Record<string, string>,
   applicant: DemoProfile = profile,
-  options: { now?: Date | string } = {}
+  options: { now?: Date | string; core?: CoreProfile; depth?: AssessmentDepth } = {}
 ): AssessmentResult {
+  // Some catalogue copy is narration written about the guided-demo persona ("Ananya is a woman
+  // student...", "8.3 CGPA..."). True for the demo, fabricated for anybody else, so it is used
+  // only when the applicant really is that persona.
+  const personaNarrative = applicant.id === profile.id;
   const eligibility = evaluateEligibility(opportunity, applicant);
-  const criteria = eligibility.status === "ineligible" ? [] : evaluateCompetitivenessCriteria(opportunity, responses, applicant);
+  const criteria = eligibility.status === "ineligible" ? [] : evaluateCompetitivenessCriteria(opportunity, responses, applicant, personaNarrative);
   const competitiveness = calculateCompetitiveness(criteria);
   const confidence = deriveCanonicalConfidence(eligibility, competitiveness);
   const gaps = buildCanonicalGaps(eligibility, criteria);
-  const strengths = buildCanonicalStrengths(opportunity, applicant, criteria);
+  const strengths = buildCanonicalStrengths(opportunity, applicant, criteria, personaNarrative);
   const recommendation = chooseCanonicalRecommendation(eligibility.status, competitiveness, opportunity, options.now);
   const recommendationLabel = labelForVerdict(recommendation.verdict);
   const biggestGap = toDisplayGap(gaps[0]);
   const improvementActions = Array.from(new Set(gaps.map((gap) => gap.suggestion).filter(Boolean))) as string[];
   const strongestEvidence = strengths[0] ?? "No strong evidence captured yet.";
 
+  const questions = getAssessmentQuestions(opportunity);
+  const answeredQuestions = questions.filter((question) => Boolean(responses[question.id])).length;
+
   return {
     opportunityId: opportunity.id,
     profileId: applicant.id,
     opportunityName: opportunity.name,
     applicantId: applicant.id,
+    depth: options.depth ?? (answeredQuestions > 0 ? "deep" : "basic"),
+    initialFit: buildInitialFit(opportunity, options.core, eligibility, criteria),
+    coverage: {
+      checkedCriteria: eligibility.conditions.filter((condition) => condition.result !== "unknown").length + criteria.filter((criterion) => criterion.evidenceScore !== null).length,
+      totalCriteria: eligibility.conditions.length + criteria.length,
+      answeredQuestions,
+      remainingQuestions: questions.length - answeredQuestions
+    },
     eligibility,
     competitiveness,
     strengths,
@@ -1640,6 +1712,234 @@ export function assistantReply(opportunity: Opportunity, assessment: Opportunity
   return `${opportunity.name}: ${labelForVerdict(result.recommendation.verdict)}. ${result.nextAction}`;
 }
 
+/**
+ * Initial fit: a small set of named alignment signals a core profile can genuinely support.
+ *
+ * Deliberately not a number. A handful of core answers cannot justify "82% fit", so this reports
+ * bands with the comparison that produced each one. The deep tier is where the weighted score
+ * lives, because only there is there enough evidence to trace it back to criterion weights.
+ */
+export function buildInitialFit(
+  opportunity: Opportunity,
+  core: CoreProfile | undefined,
+  eligibility: AssessmentResult["eligibility"],
+  criteria: AssessmentResult["competitiveness"]["criteria"]
+): InitialFit {
+  const signals = core ? initialFitSignals(opportunity, core) : [];
+  const known = signals.filter((signal) => signal.band !== "unknown" && signal.affectsBand);
+  const band = aggregateFitBand(known);
+
+  const missingInformation = [
+    ...eligibility.conditions.filter((condition) => condition.result === "unknown").map((condition) => condition.label),
+    ...signals.filter((signal) => signal.band === "unknown").map((signal) => signal.label),
+    ...criteria.filter((criterion) => criterion.evidenceScore === null).map((criterion) => criterion.label)
+  ];
+
+  const reasons = [
+    eligibilityReason(eligibility),
+    ...known
+      .slice()
+      .sort((a, b) => fitRank(a.band) - fitRank(b.band))
+      .slice(0, 2)
+      .map((signal) => signal.explanation)
+  ].filter(Boolean) as string[];
+
+  return {
+    band,
+    rule: FIT_AGGREGATION_RULE,
+    signals,
+    reasons: reasons.slice(0, 3),
+    missingInformation: Array.from(new Set(missingInformation))
+  };
+}
+
+const FIT_AGGREGATION_RULE =
+  "Initial fit is low if any decisive alignment signal is low, strong if at least two are known and all are strong, and moderate otherwise. Field alignment is shown but never lowers the band, because an opportunity not naming your discipline is not the same as excluding it. It is a band, not a score, because core answers alone cannot support a number.";
+
+function aggregateFitBand(known: InitialFitSignal[]): FitBand {
+  if (!known.length) return "unknown";
+  if (known.some((signal) => signal.band === "low")) return "low";
+  if (known.length >= 2 && known.every((signal) => signal.band === "strong")) return "strong";
+  return "moderate";
+}
+
+function fitRank(band: FitBand) {
+  return band === "low" ? 0 : band === "moderate" ? 1 : band === "strong" ? 2 : 3;
+}
+
+function eligibilityReason(eligibility: AssessmentResult["eligibility"]) {
+  if (eligibility.status === "ineligible") {
+    return `A hard requirement does not pass: ${eligibility.blockers.join("; ")}.`;
+  }
+  if (eligibility.status === "uncertain") {
+    const unknown = eligibility.conditions.filter((condition) => condition.result === "unknown");
+    return `${unknown.length} hard requirement${unknown.length === 1 ? "" : "s"} cannot be checked yet: ${unknown.map((condition) => condition.label.toLowerCase()).join("; ")}.`;
+  }
+  const passed = eligibility.conditions.filter((condition) => condition.result === "pass");
+  return `All ${passed.length} published hard requirement${passed.length === 1 ? "" : "s"} pass on the details provided.`;
+}
+
+function initialFitSignals(opportunity: Opportunity, core: CoreProfile): InitialFitSignal[] {
+  return [
+    academicSignal(opportunity, core),
+    stageSignal(opportunity, core),
+    fieldSignal(opportunity, core),
+    incomeSignal(opportunity, core)
+  ].filter(Boolean) as InitialFitSignal[];
+}
+
+function academicSignal(opportunity: Opportunity, core: CoreProfile): InitialFitSignal {
+  const merit = academicMeritsSelection(opportunity);
+  const comparedWith = merit
+    ? "academic record, which this opportunity lists among its selection criteria"
+    : "academic record, which is a general readiness signal rather than a published criterion here";
+  if (!core.academicPerformance) {
+    return {
+      id: "academic",
+      label: "Academic alignment",
+      band: "unknown",
+      userValue: "Not provided",
+      comparedWith,
+      explanation: "Academic performance has not been provided, so academic alignment cannot be placed.",
+      source: merit ? "Official criterion" : "Process-derived",
+      affectsBand: true
+    };
+  }
+  const band: FitBand = core.academicPerformance.startsWith("Above 85") ? "strong" : core.academicPerformance.startsWith("Below 60") ? "low" : "moderate";
+  return {
+    id: "academic",
+    label: "Academic alignment",
+    band,
+    userValue: core.academicPerformance,
+    comparedWith,
+    explanation: `Academic record of ${core.academicPerformance.toLowerCase()} places academic alignment as ${band} against the ${comparedWith}.`,
+    source: merit ? "Official criterion" : "Process-derived",
+    affectsBand: true
+  };
+}
+
+function stageSignal(opportunity: Opportunity, core: CoreProfile): InitialFitSignal {
+  const target = `${opportunity.stage} ${opportunity.targetApplicant}`;
+  if (!core.educationLevel) {
+    return {
+      id: "stage",
+      label: "Stage alignment",
+      band: "unknown",
+      userValue: "Not provided",
+      comparedWith: opportunity.stage,
+      explanation: "Education level has not been provided, so stage alignment cannot be placed.",
+      source: "Official criterion",
+      affectsBand: true
+    };
+  }
+  const wanted = stageKeywords(target);
+  const mine = stageKeywords(`${core.educationLevel} ${core.yearStatus}`);
+  const overlap = mine.some((keyword) => wanted.includes(keyword));
+  const targetIsSpecific = wanted.length > 0;
+  const band: FitBand = !targetIsSpecific ? "moderate" : overlap ? "strong" : "low";
+  const explanation = !targetIsSpecific
+    ? `This opportunity does not publish a specific study stage, so ${core.educationLevel.toLowerCase()} is neither confirmed nor excluded.`
+    : overlap
+      ? `${core.educationLevel} matches the stage this opportunity targets (${opportunity.stage}).`
+      : `${core.educationLevel} does not match the stage this opportunity targets (${opportunity.stage}).`;
+  return {
+    id: "stage",
+    label: "Stage alignment",
+    band,
+    userValue: [core.educationLevel, core.yearStatus].filter(Boolean).join(", "),
+    comparedWith: opportunity.stage,
+    explanation,
+    source: "Official criterion",
+    affectsBand: true
+  };
+}
+
+function fieldSignal(opportunity: Opportunity, core: CoreProfile): InitialFitSignal | null {
+  if (!core.fieldOfStudy) return null;
+  const text = normalize(`${opportunity.name} ${opportunity.description} ${opportunity.targetApplicant} ${opportunity.tags.join(" ")}`);
+  const named = normalize(core.fieldOfStudy)
+    .split(/[^a-z0-9]+/)
+    .filter((token) => token.length > 3)
+    .some((token) => text.includes(token));
+  const restricted = FIELD_KEYWORDS.some((keyword) => text.includes(keyword));
+
+  // Absence of a mention is not exclusion, so this signal never reports "low".
+  const band: FitBand = named || !restricted ? "strong" : "moderate";
+  const explanation = named
+    ? `${core.fieldOfStudy} appears in this opportunity's published description.`
+    : restricted
+      ? `This opportunity names particular disciplines and does not mention ${core.fieldOfStudy}, though it does not exclude it either.`
+      : `This opportunity publishes no discipline restriction, so ${core.fieldOfStudy} is not a barrier.`;
+  return {
+    id: "field",
+    label: "Field alignment",
+    band,
+    userValue: core.fieldOfStudy,
+    comparedWith: "published description and tags",
+    explanation,
+    source: "Process-derived",
+    affectsBand: false
+  };
+}
+
+const FIELD_KEYWORDS = ["engineering", "technical", "science", "research", "design", "medical", "management", "biotech", "agriculture", "law"];
+
+function incomeSignal(opportunity: Opportunity, core: CoreProfile): InitialFitSignal | null {
+  const rule = (opportunity.eligibilityRules ?? []).find((item) => item.profileField === "income" && (item.operator === "lte" || item.operator === "between"));
+  if (!rule) return null;
+  const threshold = typeof rule.value === "number" ? rule.value : null;
+  if (!core.householdIncome) {
+    return {
+      id: "income",
+      label: "Income alignment",
+      band: "unknown",
+      userValue: "Not provided",
+      comparedWith: rule.label,
+      explanation: `Household income has not been provided, so ${rule.label.toLowerCase()} cannot be checked.`,
+      source: rule.source,
+      affectsBand: true
+    };
+  }
+  const declared = incomeBandCeiling(core.householdIncome);
+  const band: FitBand = threshold === null || declared === null ? "unknown" : declared <= threshold ? "strong" : "low";
+  const explanation =
+    threshold === null || declared === null
+      ? `Household income of ${core.householdIncome} could not be compared with ${rule.label.toLowerCase()}.`
+      : declared <= threshold
+        ? `Declared household income of ${core.householdIncome} is within ${rule.label.toLowerCase()}.`
+        : `Declared household income of ${core.householdIncome} is above ${rule.label.toLowerCase()}.`;
+  return {
+    id: "income",
+    label: "Income alignment",
+    band,
+    userValue: core.householdIncome,
+    comparedWith: rule.label,
+    explanation,
+    source: rule.source,
+    affectsBand: true
+  };
+}
+
+/** The top of a declared band, so an "up to X lakh" rule is tested against the worst case. */
+export function incomeBandCeiling(band: string): number | null {
+  if (/above/i.test(band)) return Number.POSITIVE_INFINITY;
+  const numbers = band.match(/[0-9]+(?:\.[0-9]+)?/g);
+  if (!numbers?.length) return null;
+  return Math.max(...numbers.map(Number));
+}
+
+function academicMeritsSelection(opportunity: Opportunity) {
+  const text = normalize(`${(opportunity.selectionCriteria ?? []).map((item) => item.label).join(" ")} ${opportunity.eligibility.join(" ")}`);
+  return text.includes("academic") || text.includes("merit") || text.includes("record");
+}
+
+function stageKeywords(value: string) {
+  const text = normalize(value);
+  return ["school", "diploma", "undergraduate", "postgraduate", "doctoral", "phd", "faculty", "founder", "researcher", "professional"].filter((keyword) =>
+    keyword === "phd" ? text.includes("phd") || text.includes("doctoral") : text.includes(keyword)
+  );
+}
+
 function evaluateEligibility(opportunity: Opportunity, applicant: DemoProfile): AssessmentResult["eligibility"] {
   const rules = opportunity.eligibilityRules?.length ? opportunity.eligibilityRules : fallbackEligibilityRules(opportunity);
   const conditions = rules.map((rule) => {
@@ -1660,7 +1960,7 @@ function evaluateEligibility(opportunity: Opportunity, applicant: DemoProfile): 
   return { status, conditions, blockers };
 }
 
-function evaluateCompetitivenessCriteria(opportunity: Opportunity, responses: Record<string, string>, applicant: DemoProfile): AssessmentResult["competitiveness"]["criteria"] {
+function evaluateCompetitivenessCriteria(opportunity: Opportunity, responses: Record<string, string>, applicant: DemoProfile, personaNarrative = true): AssessmentResult["competitiveness"]["criteria"] {
   const sourceCriteria = getOpportunityCriteria(opportunity);
   const weights = normalizedWeights(sourceCriteria);
   return sourceCriteria.map((criterion, index) => {
@@ -1674,7 +1974,7 @@ function evaluateCompetitivenessCriteria(opportunity: Opportunity, responses: Re
       basis: criterion.basis ?? basisFromSource(criterion.source),
       evidenceStrength: evidenceStrengthForScore(evidenceScore),
       evidenceScore,
-      explanation: criterionExplanation(criterion, answer, evidenceScore),
+      explanation: criterionExplanation(criterion, answer, evidenceScore, personaNarrative),
       evidenceFromProfile: profileEvidenceForCriterion(applicant, criterion),
       source: criterion.source === "Unknown / criteria not publicly disclosed" ? undefined : criterion.source
     };
@@ -1782,11 +2082,12 @@ function buildCanonicalGaps(
   return [...eligibilityGaps, ...evidenceGaps].sort((a, b) => gapSeverityScore(b) - gapSeverityScore(a));
 }
 
-function buildCanonicalStrengths(opportunity: Opportunity, applicant: DemoProfile, criteria: AssessmentResult["competitiveness"]["criteria"]) {
+function buildCanonicalStrengths(opportunity: Opportunity, applicant: DemoProfile, criteria: AssessmentResult["competitiveness"]["criteria"], personaNarrative = true) {
   const criterionStrengths = criteria
     .filter((criterion) => criterion.evidenceScore !== null && criterion.evidenceScore >= 3)
     .map((criterion) => `${criterion.label}: ${criterion.explanation}`);
-  return Array.from(new Set([...(opportunity.assessment?.strengths ?? []), ...criterionStrengths, ...applicant.strengths])).slice(0, 6);
+  const catalogueNarrative = personaNarrative ? opportunity.assessment?.strengths ?? [] : [];
+  return Array.from(new Set([...catalogueNarrative, ...criterionStrengths, ...applicant.strengths])).slice(0, 6);
 }
 
 function fallbackEligibilityRules(opportunity: Opportunity): EligibilityRule[] {
@@ -1875,9 +2176,14 @@ function evidenceStrengthForScore(score: EvidenceScore): EvidenceStrength {
   return "strong";
 }
 
-function criterionExplanation(criterion: EvaluatorCriterion, answer: string | undefined, score: EvidenceScore) {
+function criterionExplanation(criterion: EvaluatorCriterion, answer: string | undefined, score: EvidenceScore, personaNarrative = true) {
   if (score === null) return `Disha does not yet know enough about ${criterion.criterion.toLowerCase()}.`;
-  if (score >= 3) return criterion.evidence[answer ?? ""] ?? criterion.strongGap;
+  if (score >= 3) {
+    // The stored evidence line is written about the demo persona and quotes its numbers, so for
+    // anyone else the explanation is built from the answer they actually gave.
+    if (personaNarrative) return criterion.evidence[answer ?? ""] ?? criterion.strongGap;
+    return `You answered "${answer}", which counts as ${score === 4 ? "strong" : "credible"} evidence for ${criterion.criterion.toLowerCase()}.`;
+  }
   if (score === 0) return criterion.weakGap;
   return criterion.moderateGap;
 }
@@ -2050,14 +2356,15 @@ function parseComparableNumber(value: unknown) {
 }
 
 function describeProfileEvidence(applicant: DemoProfile, criterion: EvaluatorCriterion) {
+  const join = (parts: (string | false)[]) => parts.filter(Boolean).join("; ");
   if (criterion.id.includes("eligibility")) {
-    return `${applicant.gender}; ${applicant.programme}; ${applicant.institutionType} institution; family income ${applicant.income}.`;
+    return join([applicant.gender, applicant.programme, applicant.institutionType && `${applicant.institutionType} institution`, applicant.income && `family income ${applicant.income}`]);
   }
   if (criterion.id.includes("academic")) {
-    return `${applicant.cgpa}; Class 12 ${applicant.class12}; ${applicant.college}.`;
+    return join([applicant.cgpa, applicant.class12 && `Class 12 ${applicant.class12}`, applicant.college]);
   }
   if (criterion.id.includes("readiness")) {
-    return `Aadhaar ${applicant.aadhaar}; bank account ${applicant.bank}; institution ${applicant.college}.`;
+    return join([applicant.aadhaar && `Aadhaar ${applicant.aadhaar}`, applicant.bank && `bank account ${applicant.bank}`, applicant.college && `institution ${applicant.college}`]);
   }
   return applicant.evidence.map((item) => `${item.label}: ${item.summary}`).join("; ");
 }

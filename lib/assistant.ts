@@ -66,7 +66,9 @@ export function answerFromDishaContext(message: string, context: DishaContext): 
     );
   }
 
-  if (context.journeyStage === "Assess" && assessment && isAssessmentQuestion(normalized)) {
+  // Any question about fit, eligibility or the verdict is answered from the saved assessment,
+  // whatever stage the journey is at, so the assistant and the assessment page cannot diverge.
+  if (assessment && isAssessmentQuestion(normalized)) {
     return responseFromAssessment(normalized, assessment, opportunityName);
   }
 
@@ -131,11 +133,18 @@ function responseFromAssessment(normalized: string, assessment: NonNullable<Dish
   const evidence = [
     `Recommendation: ${assessment.recommendationLabel}.`,
     eligibilityEvidenceLine(assessment),
+    initialFitEvidenceLine(assessment),
     competitivenessEvidenceLine(assessment),
     `Confidence: ${assessment.confidence.level}. ${assessment.confidence.explanation}`,
     `Strongest evidence: ${assessment.strongestEvidence}.`,
     gap ? `Biggest gap: ${gap.criterion}. ${gap.summary}` : ""
   ].filter(Boolean);
+
+  // "Am I a good fit?" restates the stored result rather than producing a second opinion.
+  if (normalized.includes("fit") || normalized.includes("eligible") || normalized.includes("eligibility")) {
+    const answer = fitAnswer(assessment, opportunityName);
+    return response(answer, evidence, assessment.nextAction, "assessment-fit", answer);
+  }
 
   if (normalized.includes("improve") || normalized.includes("first") || normalized.includes("readiness") || normalized.includes("moderate") || normalized.includes("missing")) {
     return response(
@@ -170,6 +179,34 @@ function responseFromAssessment(normalized: string, assessment: NonNullable<Dish
   );
 }
 
+/**
+ * Explains the saved result rather than forming a new one.
+ *
+ * Every clause below is read straight out of the stored assessment object, including the wording of
+ * its own reasons, so the assistant cannot drift from what the assessment page is showing. A basic
+ * result is explained in bands, because that is all a basic result contains.
+ */
+function fitAnswer(assessment: NonNullable<DishaContext["assessmentResult"]>, opportunityName: string) {
+  const eligibility =
+    assessment.eligibility.status === "eligible"
+      ? "Eligible"
+      : assessment.eligibility.status === "ineligible"
+        ? "Not eligible"
+        : "Needs more information";
+  const fit = assessment.initialFit.band === "unknown" ? "not enough information for an initial fit" : `${assessment.initialFit.band} initial fit`;
+  const reason = assessment.initialFit.reasons[0] ?? assessment.overallAssessment;
+
+  if (assessment.depth === "deep" && assessment.competitiveness.score !== null) {
+    return `Your saved assessment for ${opportunityName} says: ${eligibility}, ${fit}. The deeper assessment puts competitiveness at ${assessment.competitiveness.score}/100 (${assessment.competitiveness.band}), covering ${assessment.competitiveness.assessedWeightPercent}% of known selection weight. ${reason}`;
+  }
+
+  const invitation =
+    assessment.depth === "basic"
+      ? ` This is the initial assessment; a deeper one would look at ${assessment.coverage.remainingQuestions} more question${assessment.coverage.remainingQuestions === 1 ? "" : "s"}.`
+      : "";
+  return `Your saved assessment for ${opportunityName} says: ${eligibility}, ${fit}. ${reason}${invitation}`;
+}
+
 function recommendationAnswer(assessment: NonNullable<DishaContext["assessmentResult"]>, opportunityName: string) {
   if (assessment.recommendation.verdict === "do_not_apply") {
     return `No. The saved assessment says not to apply for ${opportunityName} because formal eligibility failed. ${assessment.nextAction}`;
@@ -200,6 +237,12 @@ function eligibilityEvidenceLine(assessment: NonNullable<DishaContext["assessmen
   if (assessment.eligibility.status === "ineligible") return `Eligibility: ineligible. Blocker: ${assessment.eligibility.blockers.join(", ")}.`;
   if (assessment.eligibility.status === "uncertain") return `Eligibility: uncertain. ${passes} requirements pass; more information is needed.`;
   return `Eligibility: eligible. ${passes} of ${assessment.eligibility.conditions.length} hard requirements pass.`;
+}
+
+function initialFitEvidenceLine(assessment: NonNullable<DishaContext["assessmentResult"]>) {
+  const signals = assessment.initialFit.signals.filter((signal) => signal.band !== "unknown");
+  const detail = signals.length ? ` ${signals.map((signal) => `${signal.label}: ${signal.band}`).join("; ")}.` : "";
+  return `Initial fit: ${assessment.initialFit.band}.${detail} ${assessment.coverage.checkedCriteria} of ${assessment.coverage.totalCriteria} criteria checked.`;
 }
 
 function competitivenessEvidenceLine(assessment: NonNullable<DishaContext["assessmentResult"]>) {

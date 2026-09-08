@@ -33,6 +33,17 @@ require.extensions[".ts"] = function loadTs(module, filename) {
 
 const { profile } = require("../lib/data.ts");
 const { assistantReply, buildOpportunityAssessmentResult, getOpportunity, sampleAssessmentResponses } = require("../lib/opportunities.ts");
+const { answerFromDishaContext } = require("../lib/assistant.ts");
+const { buildDishaContext } = require("../lib/dishaContext.ts");
+const {
+  applicantFromCoreProfile,
+  buildBasicAssessment,
+  buildDeepAssessment,
+  coreQuestions,
+  defaultCoreProfile,
+  deepQuestions,
+  opportunityQualifiers
+} = require("../lib/assessmentFlow.ts");
 const {
   NORMAL_ASSESSMENT_SCHEMA_VERSION,
   defaultNormalAssessment,
@@ -277,10 +288,12 @@ test("a legacy fit-shaped result is never handed back to the UI", () => {
 });
 
 test("legacy inputs survive migration and drive the recomputed result", () => {
-  const hydrated = hydrateNormalAssessment(legacyStoredDraft());
+  const hydrated = hydrateNormalAssessment(legacyStoredDraft({ field: "Computer Science", highestQualification: "Undergraduate", gender: "Female" }));
   assert.equal(hydrated.name, "Ananya");
-  assert.equal(hydrated.institution, "PES University");
-  assert.equal(hydrated.evidence.income, false);
+  // Pre-v3 drafts kept the same facts under flat keys; those are carried into the core profile.
+  assert.equal(hydrated.core.fieldOfStudy, "Computer Science");
+  assert.equal(hydrated.core.educationLevel, "Undergraduate");
+  assert.equal(hydrated.core.qualifiers.gender, "Female");
   assert.equal(hydrated.generated, true);
   assert.equal(hydrated.assessmentResult.opportunityId, "aicte-pragati-scholarship");
 
@@ -297,7 +310,7 @@ test("a legacy result for an opportunity that no longer exists is dropped, not r
 
 test("a current canonical result is kept verbatim", () => {
   const opportunity = getOpportunity("aicte-pragati-scholarship");
-  const saved = finalizeNormalAssessment({ ...defaultNormalAssessment, name: "Ananya", institution: "PES University", programme: "B.Tech CSE" }, opportunity);
+  const saved = finalizeNormalAssessment({ ...defaultNormalAssessment, name: "Ananya", core: { ...defaultNormalAssessment.core, educationLevel: "Undergraduate", fieldOfStudy: "Computer Science" } }, opportunity);
   const hydrated = hydrateNormalAssessment(JSON.parse(JSON.stringify(saved)));
   assert.deepEqual(hydrated.assessmentResult, saved.assessmentResult);
   assert.equal(hydrated.generated, true);
@@ -308,17 +321,16 @@ test("a truncated or garbage payload falls back to defaults instead of throwing"
   assert.deepEqual(hydrateNormalAssessment("nonsense"), defaultNormalAssessment);
   assert.deepEqual(hydrateNormalAssessment([1, 2, 3]), defaultNormalAssessment);
 
-  const wrongTypes = hydrateNormalAssessment({ goals: "financial support", researchOutputs: null, evidence: "yes", generated: true, assessmentResult: {} });
-  assert.deepEqual(wrongTypes.goals, []);
-  assert.deepEqual(wrongTypes.researchOutputs, []);
-  assert.deepEqual(wrongTypes.evidence, defaultNormalAssessment.evidence);
+  const wrongTypes = hydrateNormalAssessment({ core: "nonsense", deepAnswers: [1, 2], generated: true, assessmentResult: {} });
+  assert.deepEqual(wrongTypes.core, defaultNormalAssessment.core);
+  assert.deepEqual(wrongTypes.deepAnswers, {});
   assert.equal(wrongTypes.assessmentResult, null);
   assert.equal(wrongTypes.generated, false);
 });
 
 test("a canonical result stamped with an older schema version is recomputed", () => {
   const opportunity = getOpportunity("aicte-pragati-scholarship");
-  const saved = finalizeNormalAssessment({ ...defaultNormalAssessment, name: "Ananya", institution: "PES University", programme: "B.Tech CSE" }, opportunity);
+  const saved = finalizeNormalAssessment({ ...defaultNormalAssessment, name: "Ananya", core: { ...defaultNormalAssessment.core, educationLevel: "Undergraduate", fieldOfStudy: "Computer Science" } }, opportunity);
   const hydrated = hydrateNormalAssessment({ ...JSON.parse(JSON.stringify(saved)), schemaVersion: NORMAL_ASSESSMENT_SCHEMA_VERSION - 1 });
   assert.equal(hydrated.schemaVersion, NORMAL_ASSESSMENT_SCHEMA_VERSION);
   assert.deepEqual(hydrated.assessmentResult, saved.assessmentResult);
@@ -326,7 +338,7 @@ test("a canonical result stamped with an older schema version is recomputed", ()
 
 test("isCanonicalAssessmentResult rejects a result missing competitiveness fields", () => {
   const opportunity = getOpportunity("aicte-pragati-scholarship");
-  const { assessmentResult } = finalizeNormalAssessment({ ...defaultNormalAssessment, name: "Ananya" }, opportunity);
+  const { assessmentResult } = finalizeNormalAssessment({ ...defaultNormalAssessment, name: "Ananya", core: { ...defaultNormalAssessment.core, educationLevel: "Undergraduate" } }, opportunity);
   assert.equal(isCanonicalAssessmentResult(assessmentResult), true);
   assert.equal(isCanonicalAssessmentResult({ ...assessmentResult, competitiveness: undefined }), false);
   assert.equal(isCanonicalAssessmentResult({ ...assessmentResult, competitiveness: { ...assessmentResult.competitiveness, band: "Moderate" } }), false);
@@ -336,7 +348,7 @@ test("isCanonicalAssessmentResult rejects a result missing competitiveness field
 
 test("/assess adopts the hydrated draft on a hard load without clobbering edits", () => {
   const opportunity = getOpportunity("aicte-pragati-scholarship");
-  const stored = finalizeNormalAssessment({ ...defaultNormalAssessment, name: "Ananya", institution: "PES University", programme: "B.Tech CSE" }, opportunity);
+  const stored = finalizeNormalAssessment({ ...defaultNormalAssessment, name: "Ananya", core: { ...defaultNormalAssessment.core, educationLevel: "Undergraduate", fieldOfStudy: "Computer Science" } }, opportunity);
 
   // Hard load: the form mounts before AppProvider has read localStorage, so its first snapshot is
   // the empty default. The mount pass is a no-op, then the hydrated draft arrives and is adopted.
@@ -353,7 +365,7 @@ test("/assess adopts the hydrated draft on a hard load without clobbering edits"
 
 test("/assess keeps an in-progress edit over a later stored draft", () => {
   const opportunity = getOpportunity("aicte-pragati-scholarship");
-  const stored = finalizeNormalAssessment({ ...defaultNormalAssessment, name: "Ananya", institution: "PES University", programme: "B.Tech CSE" }, opportunity);
+  const stored = finalizeNormalAssessment({ ...defaultNormalAssessment, name: "Ananya", core: { ...defaultNormalAssessment.core, educationLevel: "Undergraduate", fieldOfStudy: "Computer Science" } }, opportunity);
   const beingTyped = { ...defaultNormalAssessment, name: "Ana" };
 
   // Once the visitor has typed, neither hydration nor a chat-driven recalculation may overwrite it.
@@ -361,6 +373,209 @@ test("/assess keeps an in-progress edit over a later stored draft", () => {
   assert.equal(resolveWorkingDraft(beingTyped, defaultNormalAssessment, true), beingTyped);
 
   // An untouched form still mirrors a chat-driven update so the panel stays in step.
-  const recalculated = finalizeNormalAssessment({ ...stored, leadership: "led significant teams/programs" }, opportunity);
+  const recalculated = finalizeNormalAssessment({ ...stored, deepAnswers: { ...stored.deepAnswers, academicEvidence: "Current marksheet and enrolment proof ready" } }, opportunity);
   assert.equal(resolveWorkingDraft(stored, recalculated, false), recalculated);
+});
+
+// ---------------------------------------------------------------------------
+// The assessment flow: basic tier, deep tier, and one source of truth.
+// ---------------------------------------------------------------------------
+
+const pragati = () => getOpportunity("aicte-pragati-scholarship");
+
+function core(overrides = {}) {
+  return { ...defaultCoreProfile, ...overrides, qualifiers: { ...defaultCoreProfile.qualifiers, ...(overrides.qualifiers ?? {}) } };
+}
+
+const strongPragatiProfile = core({
+  ageBand: "18-21",
+  domicile: "Karnataka",
+  educationLevel: "Undergraduate",
+  fieldOfStudy: "Engineering",
+  yearStatus: "Final year",
+  academicPerformance: "Above 85% or 8.5+ CGPA",
+  householdIncome: "₹2.5-4.5 lakh",
+  qualifiers: { gender: "Female", institutionType: "AICTE-approved" }
+});
+
+test("the basic assessment asks a short, relevant set of questions", () => {
+  assert.ok(coreQuestions.length >= 6 && coreQuestions.length <= 8, `expected 6-8 core questions, got ${coreQuestions.length}`);
+  assert.ok(opportunityQualifiers(pragati()).length <= 2);
+
+  // Ask only what changes the answer: none of these ever appear.
+  const asked = [...coreQuestions, ...opportunityQualifiers(pragati())].map((question) => `${question.id} ${question.label}`.toLowerCase()).join(" ");
+  for (const banned of ["name", "roll", "captcha", "parent", "marital", "religion", "hostel"]) {
+    assert.ok(!asked.includes(banned), `basic assessment should not ask about ${banned}`);
+  }
+  // Every core question carries a reason the user can read.
+  coreQuestions.forEach((question) => assert.ok(question.why && question.why.length > 20, `${question.id} needs a why`));
+});
+
+test("case 1: clearly eligible and strong fit", () => {
+  const result = buildBasicAssessment(pragati(), strongPragatiProfile);
+  assert.equal(result.depth, "basic");
+  assert.equal(result.eligibility.status, "eligible");
+  assert.equal(result.initialFit.band, "strong");
+  assert.equal(result.competitiveness.score, null, "a basic result must never carry a numeric score");
+  assert.ok(result.initialFit.reasons.length >= 1 && result.initialFit.reasons.length <= 3);
+  result.initialFit.signals.forEach((signal) => {
+    assert.ok(signal.explanation.length > 0);
+    assert.ok(signal.comparedWith.length > 0, `${signal.id} must say what it was compared with`);
+  });
+});
+
+test("case 2: eligible but weak fit", () => {
+  const weak = core({ ...strongPragatiProfile, academicPerformance: "Below 60% or under 6 CGPA" });
+  const result = buildBasicAssessment(pragati(), weak);
+  assert.equal(result.eligibility.status, "eligible", "a weak fit is still formally eligible");
+  assert.equal(result.initialFit.band, "low");
+  assert.ok(result.initialFit.reasons.some((reason) => reason.toLowerCase().includes("academic")));
+});
+
+test("case 3: clearly ineligible", () => {
+  const ineligible = core({ ...strongPragatiProfile, qualifiers: { gender: "Male", institutionType: "AICTE-approved" } });
+  const result = buildBasicAssessment(pragati(), ineligible);
+  assert.equal(result.eligibility.status, "ineligible");
+  assert.ok(result.eligibility.blockers.length > 0);
+  assert.ok(result.initialFit.reasons[0].toLowerCase().includes("hard requirement"));
+  assert.deepEqual(result.competitiveness.criteria, [], "an ineligible applicant is not scored on competitiveness");
+});
+
+test("case 4: insufficient information", () => {
+  const result = buildBasicAssessment(pragati(), defaultCoreProfile);
+  assert.equal(result.eligibility.status, "uncertain", "unanswered questions must read as unknown, never as a pass");
+  assert.equal(result.initialFit.band, "unknown");
+  assert.ok(result.initialFit.missingInformation.length > 0);
+  assert.equal(result.competitiveness.score, null);
+});
+
+test("an unanswered core profile never borrows values from the sample profile", () => {
+  const applicant = applicantFromCoreProfile(defaultCoreProfile);
+  assert.equal(applicant.gender, "");
+  assert.equal(applicant.institutionType, "");
+  assert.equal(applicant.category, "");
+  assert.equal(applicant.income, "");
+  assert.notEqual(applicant.id, profile.id);
+});
+
+test("income bands are compared at the top of the band, not the bottom", () => {
+  const overThreshold = core({ ...strongPragatiProfile, householdIncome: "Above ₹8 lakh" });
+  const result = buildBasicAssessment(pragati(), overThreshold);
+  const income = result.initialFit.signals.find((signal) => signal.id === "income");
+  assert.equal(income.band, "low");
+  assert.equal(result.eligibility.status, "ineligible");
+});
+
+test("case 5: basic to deep keeps eligibility identical and adds competitiveness", () => {
+  const basic = buildBasicAssessment(pragati(), strongPragatiProfile);
+  const deep = buildDeepAssessment(pragati(), strongPragatiProfile, sampleAssessmentResponses["aicte-pragati-scholarship"]);
+
+  assert.equal(deep.depth, "deep");
+  assert.deepEqual(deep.eligibility, basic.eligibility, "going deeper must not change eligibility");
+  assert.deepEqual(deep.initialFit.band, basic.initialFit.band, "going deeper must not change the initial fit band");
+  assert.equal(typeof deep.competitiveness.score, "number");
+  assert.ok(deep.coverage.checkedCriteria > basic.coverage.checkedCriteria);
+  assert.equal(deep.coverage.remainingQuestions, 0);
+});
+
+test("deep questions differ by opportunity", () => {
+  const scholarship = deepQuestions(pragati()).map((question) => question.id);
+  const startup = deepQuestions(getOpportunity("startup-india-seed-fund")).map((question) => question.id);
+  const grant = deepQuestions(getOpportunity("anrf-advanced-research-grant")).map((question) => question.id);
+
+  assert.notDeepEqual(scholarship, startup);
+  assert.notDeepEqual(startup, grant);
+  assert.ok(startup.includes("prototype") && startup.includes("team"));
+  assert.ok(grant.includes("novelty") && grant.includes("trackRecord"));
+});
+
+test("a score is only shown when the engine has enough weight to defend one", () => {
+  const partial = buildDeepAssessment(pragati(), strongPragatiProfile, { eligibilityProof: "All documents ready" });
+  assert.equal(partial.competitiveness.score, null);
+  assert.ok(partial.competitiveness.assessedWeightPercent < 60);
+
+  const full = buildDeepAssessment(pragati(), strongPragatiProfile, sampleAssessmentResponses["aicte-pragati-scholarship"]);
+  assert.equal(typeof full.competitiveness.score, "number");
+  full.competitiveness.criteria.forEach((criterion) => {
+    assert.equal(typeof criterion.weight, "number");
+    assert.ok(criterion.explanation.length > 0, `${criterion.id} must explain itself`);
+  });
+});
+
+test("case 6: the assistant explains the saved assessment without contradicting it", () => {
+  const draft = finalizeNormalAssessment(
+    { ...defaultNormalAssessment, name: "Test", core: strongPragatiProfile },
+    pragati()
+  );
+  const context = buildDishaContext({ pathname: "/assess", normalAssessment: draft });
+
+  assert.equal(context.assessmentResult, draft.assessmentResult, "the assistant reads the very same object");
+
+  const saved = draft.assessmentResult;
+  for (const question of ["Am I a good fit?", "Am I eligible?", "Should I apply?", "What should I improve first?"]) {
+    const reply = answerFromDishaContext(question, context);
+    const text = `${reply.answer} ${reply.supportingEvidence.join(" ")}`.toLowerCase();
+
+    // It must never assert an eligibility state the saved assessment does not hold.
+    if (saved.eligibility.status === "eligible") {
+      assert.ok(!text.includes("not eligible"), `"${question}" contradicted eligibility: ${reply.answer}`);
+      assert.ok(!text.includes("ineligible"), `"${question}" contradicted eligibility: ${reply.answer}`);
+    }
+    // It must never invent a competitiveness score the saved assessment did not compute.
+    if (saved.competitiveness.score === null) {
+      assert.ok(!/\b\d{1,3}\/100\b/.test(text), `"${question}" invented a score: ${reply.answer}`);
+    }
+  }
+
+  const fitReply = answerFromDishaContext("Am I a good fit?", context);
+  assert.ok(fitReply.answer.toLowerCase().includes(saved.initialFit.band), "the assistant must restate the saved fit band");
+  assert.ok(fitReply.answer.toLowerCase().includes("eligible"));
+});
+
+test("the assistant reports the deep score once one exists, and only then", () => {
+  const basicDraft = finalizeNormalAssessment({ ...defaultNormalAssessment, core: strongPragatiProfile }, pragati());
+  const basicReply = answerFromDishaContext("Am I a good fit?", buildDishaContext({ pathname: "/assess", normalAssessment: basicDraft }));
+  assert.ok(!/\d{1,3}\/100/.test(basicReply.answer));
+
+  const deepDraft = finalizeNormalAssessment(
+    { ...defaultNormalAssessment, core: strongPragatiProfile, deepAnswers: sampleAssessmentResponses["aicte-pragati-scholarship"] },
+    pragati()
+  );
+  const deepReply = answerFromDishaContext("Am I a good fit?", buildDishaContext({ pathname: "/assess", normalAssessment: deepDraft }));
+  assert.ok(deepReply.answer.includes(`${deepDraft.assessmentResult.competitiveness.score}/100`), deepReply.answer);
+});
+
+test("every eligibility condition is traceable to a value and a rule", () => {
+  const result = buildBasicAssessment(pragati(), strongPragatiProfile);
+  result.eligibility.conditions.forEach((condition) => {
+    assert.ok(condition.label.length > 0);
+    assert.ok(condition.explanation.length > 0, `${condition.id} must explain itself`);
+    assert.ok(["pass", "fail", "unknown"].includes(condition.result));
+  });
+});
+
+test("a normal visitor's result never quotes the guided-demo persona", () => {
+  const deep = buildDeepAssessment(pragati(), strongPragatiProfile, sampleAssessmentResponses["aicte-pragati-scholarship"]);
+  const rendered = JSON.stringify(deep).toLowerCase();
+  assert.ok(!rendered.includes("ananya"), "demo persona name leaked into a normal result");
+  assert.ok(!rendered.includes("8.3 cgpa"), "demo persona's academic record leaked into a normal result");
+
+  // The guided demo itself keeps its narration.
+  const demo = buildOpportunityAssessmentResult(pragati(), sampleAssessmentResponses["aicte-pragati-scholarship"], profile);
+  assert.ok(JSON.stringify(demo).toLowerCase().includes("ananya"));
+});
+
+test("criterion explanations for a normal visitor quote the answer they actually gave", () => {
+  const deep = buildDeepAssessment(pragati(), strongPragatiProfile, { academicEvidence: "Current marksheet and enrolment proof ready" });
+  const criterion = deep.competitiveness.criteria.find((item) => item.id.includes("academic"));
+  assert.ok(criterion.explanation.includes("Current marksheet and enrolment proof ready"), criterion.explanation);
+});
+
+test("an ineligible applicant is told the blocker outranks a strong alignment", () => {
+  const ineligible = core({ ...strongPragatiProfile, qualifiers: { gender: "Male", institutionType: "AICTE-approved" } });
+  const result = buildBasicAssessment(pragati(), ineligible);
+  // The band stays truthful about alignment; eligibility is what settles the decision.
+  assert.equal(result.eligibility.status, "ineligible");
+  assert.ok(result.eligibility.blockers.includes("Woman student"));
+  assert.ok(result.initialFit.reasons[0].startsWith("A hard requirement does not pass"));
 });

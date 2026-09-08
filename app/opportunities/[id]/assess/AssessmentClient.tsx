@@ -37,7 +37,8 @@ const statusTone = {
   low: "warning",
   credible: "active",
   claim_only: "warning",
-  none: "neutral"
+  none: "neutral",
+  moderate: "active"
 } as const;
 
 export default function AssessmentClient({ opportunity, initialAsk: _initialAsk }: { opportunity: Opportunity; initialAsk: string }) {
@@ -55,8 +56,10 @@ export default function AssessmentClient({ opportunity, initialAsk: _initialAsk 
     if (!guidedDemoActive && normalAssessment.assessmentResult?.opportunityId === opportunity.id) {
       return normalAssessment.assessmentResult;
     }
-    return buildOpportunityAssessmentResult(opportunity, responses, applicant);
-  }, [applicant, guidedDemoActive, normalAssessment.assessmentResult, opportunity, responses]);
+    // Same builder, same core profile: this page can never compute a different verdict from the
+    // one /assess saved or the one the assistant reads.
+    return buildOpportunityAssessmentResult(opportunity, responses, applicant, guidedDemoActive ? {} : { core: normalAssessment.core });
+  }, [applicant, guidedDemoActive, normalAssessment.assessmentResult, normalAssessment.core, opportunity, responses]);
   const isCanonicalPragati = opportunity.id === "aicte-pragati-scholarship";
   const isDemoPragati = guidedDemoActive && isCanonicalPragati;
   const applicantLabel = guidedDemoActive ? "Ananya" : normalAssessment.name || "your profile";
@@ -157,9 +160,37 @@ export default function AssessmentClient({ opportunity, initialAsk: _initialAsk 
         </section>
       </section>
 
+      {!guidedDemoActive ? (
+        <section className="mb-7 rounded-lg bg-[#EEF2FF] p-5">
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusBadge tone={assessmentResult.depth === "deep" ? "success" : "active"}>
+              {assessmentResult.depth === "deep" ? "Deeper assessment" : "Initial assessment"}
+            </StatusBadge>
+            <span className="text-sm font-semibold text-muted">
+              Disha can already check {assessmentResult.coverage.checkedCriteria} of {assessmentResult.coverage.totalCriteria} criteria for this opportunity.
+            </span>
+          </div>
+          <p className="mt-2 text-sm leading-6 text-slate-700">
+            {assessmentResult.coverage.remainingQuestions > 0
+              ? `Answer ${assessmentResult.coverage.remainingQuestions} more question${assessmentResult.coverage.remainingQuestions === 1 ? "" : "s"} to complete the deeper assessment. Nothing you have already told Disha is asked again.`
+              : "Every published question for this opportunity has been answered."}
+          </p>
+          {assessmentResult.coverage.remainingQuestions > 0 ? (
+            <Link href="/assess" className="mt-3 inline-flex items-center gap-1.5 text-sm font-bold text-primary hover:underline">
+              Answer the remaining questions
+              <ArrowRight size={15} />
+            </Link>
+          ) : null}
+        </section>
+      ) : null}
+
       <section className="mb-7 grid gap-4 md:grid-cols-4">
         <AssessmentSummaryCard title={t.assessment.eligibility} status={assessmentResult.eligibility.status} body={eligibilitySummary(assessmentResult)} />
-        <AssessmentSummaryCard title="Competitive fit" status={assessmentResult.competitiveness.band} body={competitiveFitSummary(assessmentResult)} />
+        <AssessmentSummaryCard
+          title={assessmentResult.depth === "basic" ? "Initial fit" : "Competitive fit"}
+          status={assessmentResult.depth === "basic" ? assessmentResult.initialFit.band : assessmentResult.competitiveness.band}
+          body={competitiveFitSummary(assessmentResult)}
+        />
         <AssessmentSummaryCard title="Confidence" status={assessmentResult.confidence.level} body={assessmentResult.confidence.explanation} />
         <article className="rounded-lg bg-white p-5 shadow-sm ring-1 ring-stone-200">
           <div className="flex items-start justify-between gap-3">
@@ -411,6 +442,9 @@ function eligibilitySummary(assessment: ReturnType<typeof buildOpportunityAssess
 }
 
 function competitiveFitSummary(assessment: ReturnType<typeof buildOpportunityAssessmentResult>) {
+  if (assessment.depth === "basic") {
+    return `Initial fit: ${assessment.initialFit.band}. ${assessment.initialFit.rule}`;
+  }
   if (assessment.eligibility.status === "ineligible") return "Not assessed because formal eligibility failed.";
   if (assessment.competitiveness.score === null) return `No numeric score shown. Usable evidence covers ${assessment.competitiveness.assessedWeightPercent}% of known selection weight.`;
   return `${sentenceCase(assessment.competitiveness.band)}: ${assessment.competitiveness.score}/100, based on ${assessment.competitiveness.assessedWeightPercent}% of known selection weight.`;

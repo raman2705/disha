@@ -8,6 +8,8 @@ import { useAppState } from "@/components/AppContext";
 import { answerFromDishaContext, type AssistantResponse } from "@/lib/assistant";
 import { assistantStarters, buildDishaContext, type DishaContext } from "@/lib/dishaContext";
 import { finalizeNormalAssessment } from "@/lib/normalAssessment";
+import { deepQuestions } from "@/lib/assessmentFlow";
+import type { Opportunity } from "@/lib/opportunities";
 
 type SpeechRecognitionLike = {
   continuous: boolean;
@@ -131,17 +133,18 @@ export function DishaAssistantDrawer() {
     if (guidedDemoActive || !normalAssessment.generated || !normalAssessment.assessmentResult || !context.activeOpportunity) return;
     const text = message.toLowerCase();
     const mentionsLeadership = /\b(led|lead|leadership|team|volunteer|organised|organized)\b/.test(text);
-    if (!mentionsLeadership || normalAssessment.leadership === "led significant teams/programs") return;
+    if (!mentionsLeadership) return;
+
+    // A fact stated in chat is an answer to a deep question, not a separate opinion: it is written
+    // into the same draft the pages use, and the result is recomputed by the same engine.
+    const answer = teamAnswerFor(context.activeOpportunity);
+    if (!answer || normalAssessment.deepAnswers[answer.questionId] === answer.value) return;
 
     const previous = normalAssessment.assessmentResult;
-    const largestTeam = text.match(/\b([2-9]|[1-9][0-9])\b/);
     const nextDraft = finalizeNormalAssessment(
       {
         ...normalAssessment,
-        leadership: largestTeam && Number(largestTeam[1]) > 10 ? "led significant teams/programs" : "led a small project/team",
-        largestTeam: largestTeam && Number(largestTeam[1]) > 25 ? "25+" : largestTeam && Number(largestTeam[1]) > 10 ? "11-25" : largestTeam && Number(largestTeam[1]) > 5 ? "6-10" : "1-5",
-        leadershipDuration: text.includes("year") ? "1+ year" : text.includes("month") ? "3-12 months" : "one-off",
-        ownership: largestTeam && Number(largestTeam[1]) > 10 ? "led multiple projects/team" : "owned a project/workstream"
+        deepAnswers: { ...normalAssessment.deepAnswers, [answer.questionId]: answer.value }
       },
       context.activeOpportunity
     );
@@ -155,7 +158,7 @@ export function DishaAssistantDrawer() {
       ...current,
       {
         role: "assistant",
-        text: `Assessment updated. Leadership facts were saved, and competitive fit moved from ${previousFit} to ${nextFit}. Recommendation is now ${next.recommendationLabel}.`
+        text: `Saved that as your answer to "${answer.questionLabel}". The assessment was recomputed: competitive fit moved from ${previousFit} to ${nextFit}, and the recommendation is now ${next.recommendationLabel}.`
       }
     ]);
   };
@@ -245,6 +248,18 @@ export function DishaAssistantDrawer() {
       </aside>
     </>
   );
+}
+
+/**
+ * Maps a leadership or team fact stated in chat onto the deep question it actually answers for the
+ * opportunity in view. Returns nothing when that opportunity has no such question, so the
+ * assistant never invents an answer to a question this opportunity does not ask.
+ */
+function teamAnswerFor(opportunity: Opportunity) {
+  const question = deepQuestions(opportunity).find((item) => item.id === "team" || item.id === "trackRecord");
+  if (!question) return null;
+  const value = question.options[question.options.length - 1];
+  return value ? { questionId: question.id, questionLabel: question.label, value } : null;
 }
 
 function greetingForContext(context: DishaContext) {

@@ -107,13 +107,21 @@ export function assistantStarters(context: DishaContext) {
 }
 
 function buildNormalEvidencePassport(draft: NormalAssessmentDraft | undefined, currentProfile: DemoProfile) {
-  const evidence = draft?.evidence;
+  // The core profile is self-reported, so a record counts as available exactly when the person
+  // actually answered the question behind it. Nothing is assumed on their behalf.
+  const core = draft?.core;
+  const evidence = {
+    identity: Boolean(core?.ageBand && core?.domicile),
+    academic: Boolean(core?.academicPerformance),
+    income: Boolean(core?.householdIncome && core.householdIncome !== "Prefer not to say"),
+    bank: false
+  };
   return {
     applicantId: currentProfile.id,
     identity: {
       legalName: currentProfile.name,
       applicationName: currentProfile.name,
-      identityConsistency: evidence?.identity ? "available" as const : "missing" as const
+      identityConsistency: evidence.identity ? "available" as const : "missing" as const
     },
     records: [
       {
@@ -121,40 +129,40 @@ function buildNormalEvidencePassport(draft: NormalAssessmentDraft | undefined, c
         domain: "identity" as const,
         label: "Identity details",
         value: currentProfile.name,
-        status: evidence?.identity ? "available" as const : "missing" as const,
+        status: evidence.identity ? "available" as const : "missing" as const,
         source: "Profile" as const,
         freshness: "current" as const,
-        note: evidence?.identity ? "Basic identity details are available." : "Add identity details before submission."
+        note: evidence.identity ? "Basic identity details are available." : "Add identity details before submission."
       },
       {
         id: "normal-academic",
         domain: "education" as const,
         label: "Academic evidence",
         value: currentProfile.programme,
-        status: evidence?.academic ? "available" as const : "missing" as const,
+        status: evidence.academic ? "available" as const : "missing" as const,
         source: "Profile" as const,
         freshness: "current" as const,
-        note: evidence?.academic ? "Academic evidence is available for an initial assessment." : "Academic evidence is still missing."
+        note: evidence.academic ? "Academic evidence is available for an initial assessment." : "Academic evidence is still missing."
       },
       {
         id: "normal-income",
         domain: "financial" as const,
         label: "Income evidence",
         value: currentProfile.income,
-        status: evidence?.income ? "available" as const : "action-required" as const,
+        status: evidence.income ? "available" as const : "action-required" as const,
         source: "Self-declared" as const,
-        freshness: evidence?.income ? "current" as const : "stale" as const,
-        note: evidence?.income ? "Income information can be checked against opportunity thresholds." : "Income proof is the main missing evidence."
+        freshness: evidence.income ? "current" as const : "stale" as const,
+        note: evidence.income ? "Income information can be checked against opportunity thresholds." : "Income proof is the main missing evidence."
       },
       {
         id: "normal-bank",
         domain: "bank" as const,
         label: "Bank evidence",
         value: currentProfile.bank,
-        status: evidence?.bank ? "available" as const : "missing" as const,
+        status: evidence.bank ? "available" as const : "missing" as const,
         source: "Profile" as const,
         freshness: "current" as const,
-        note: evidence?.bank ? "Bank details are available for readiness checks." : "Bank details can be added later, before submission."
+        note: evidence.bank ? "Bank details are available for readiness checks." : "Bank details can be added later, before submission."
       }
     ]
   };
