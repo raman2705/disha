@@ -1,5 +1,5 @@
 import { LucideIcon, FlaskConical, GraduationCap, HandCoins, Landmark, Rocket } from "lucide-react";
-import { ananyaEvidencePassport, profile, type DemoProfile, type EvidenceRecord } from "@/lib/data";
+import { profile, type DemoProfile } from "@/lib/data";
 
 export type OpportunityCategory = "Scholarships" | "Research Grants" | "Fellowships" | "Startup Funding" | "Government Schemes";
 export type AssessmentStatus = "Strong" | "Moderate" | "Weak" | "Missing";
@@ -8,7 +8,122 @@ export type Provenance = "Official criterion" | "Process-derived" | "Historical"
 export type AssessmentAvailabilityLevel = "full" | "partial" | "discovery";
 export type ImportanceLevel = "High" | "Medium" | "Low";
 export type FixabilityLevel = "Easy" | "Moderate" | "Hard" | "Not fixable before deadline";
-export type RecommendationLevel = "Strongly pursue" | "Worth pursuing" | "Pursue after improving" | "Low priority" | "Not currently worth effort";
+export type RecommendationLevel = "Strongly pursue" | "Worth pursuing" | "Pursue after improving" | "Low priority" | "Verify eligibility" | "Do not apply" | "Insufficient information";
+export type RecommendationKey = "strongly_pursue" | "worth_pursuing" | "pursue_after_improving" | "low_priority" | "verify_eligibility" | "do_not_apply" | "insufficient_information";
+export type EligibilityStatus = "eligible" | "ineligible" | "uncertain";
+export type EligibilityConditionResult = "pass" | "fail" | "unknown";
+export type EligibilityOperator = "equals" | "not_equals" | "includes" | "excludes" | "one_of" | "gte" | "lte" | "between" | "boolean" | "exists";
+export type CompetitivenessBand = "strong" | "competitive" | "developing" | "weak" | "unknown";
+export type CriterionBasis = "explicit" | "strongly_inferred" | "weakly_inferred" | "unknown";
+export type EvidenceStrength = "strong" | "credible" | "weak" | "claim_only" | "none" | "unknown";
+export type EvidenceScore = 0 | 1 | 2 | 3 | 4 | null;
+export type RecommendationVerdict =
+  | "strong_opportunity"
+  | "worth_applying"
+  | "improve_before_applying"
+  | "low_priority"
+  | "verify_eligibility"
+  | "do_not_apply"
+  | "insufficient_information";
+export type ConfidenceLevel = "high" | "medium" | "low";
+
+export type EligibilityRule = {
+  id: string;
+  label: string;
+  profileField: keyof DemoProfile | "age" | "citizenship" | "startupStage" | "organisationType";
+  operator: EligibilityOperator;
+  value?: string | number | boolean | string[] | [number, number];
+  hard?: boolean;
+  source?: string;
+  confidence?: ConfidenceLevel;
+};
+
+export type EvidenceFact = {
+  type: "academic" | "research" | "leadership" | "impact" | "work" | "startup" | "award" | "output" | "document";
+  role?: string;
+  ownership?: "assisted" | "individual" | "workstream" | "lead";
+  teamSize?: number;
+  durationMonths?: number;
+  outputs?: string[];
+  outcomes?: string[];
+  verification?: "self_reported" | "described" | "documented" | "externally_verifiable";
+  summary: string;
+};
+
+export type AssessmentResult = {
+  opportunityId: string;
+  profileId?: string;
+  opportunityName: string;
+  applicantId: string;
+  eligibility: {
+    status: EligibilityStatus;
+    conditions: {
+      id: string;
+      label: string;
+      result: EligibilityConditionResult;
+      userValue?: string;
+      requiredValue?: string;
+      explanation: string;
+      source?: string;
+    }[];
+    blockers: string[];
+  };
+  competitiveness: {
+    score: number | null;
+    band: CompetitivenessBand;
+    assessedWeightPercent: number;
+    criteria: {
+      id: string;
+      label: string;
+      importance: "high" | "medium" | "low";
+      weight: number;
+      basis: CriterionBasis;
+      evidenceStrength: EvidenceStrength;
+      evidenceScore: EvidenceScore;
+      explanation: string;
+      evidenceFromProfile?: string[];
+      source?: string;
+    }[];
+  };
+  strengths: string[];
+  gaps: {
+    label: string;
+    severity: "critical" | "important" | "minor";
+    improvable: boolean;
+    suggestion?: string;
+  }[];
+  recommendation: {
+    verdict: RecommendationVerdict;
+    explanation: string;
+  };
+  confidence: {
+    level: ConfidenceLevel;
+    publicCriteriaCoverage: number;
+    userEvidenceCoverage: number;
+    explanation: string;
+  };
+  evidenceFacts?: EvidenceFact[];
+  previousAssessment?: Pick<AssessmentResult, "competitiveness" | "recommendation">;
+  overallAssessment: string;
+  strongestEvidence: string;
+  biggestGap: {
+    criterionId: string;
+    criterion: string;
+    summary: string;
+    whyItMatters: string;
+    action: string;
+  } | null;
+  nextAction: string;
+  effortVsUpside: {
+    effort: "Low" | "Moderate" | "High";
+    upside: string;
+    rationale: string;
+  };
+  recommendationLabel: RecommendationLevel;
+  recommendationKey: RecommendationKey;
+  improvementActions: string[];
+  generatedAt: string;
+};
 
 export type SelectionCriterion = {
   label: string;
@@ -56,6 +171,7 @@ export type Opportunity = {
   description: string;
   stage: string;
   eligibility: string[];
+  eligibilityRules?: EligibilityRule[];
   access: string[];
   readiness: string[];
   selectionCriteria?: SelectionCriterion[];
@@ -81,6 +197,9 @@ export type EvaluatorCriterion = {
   source: Provenance;
   confidence: "High" | "Medium" | "Low";
   importance?: ImportanceLevel;
+  weight?: number;
+  basis?: CriterionBasis;
+  expectedEvidence?: string;
   fixability?: FixabilityLevel;
   profileEvidenceIds?: string[];
   likelyEffect?: string;
@@ -107,66 +226,6 @@ export type OpportunityAssessment = {
   totalSignals: number;
   biggestGap: EvaluatedCriterion | null;
   nextActions: string[];
-};
-
-export type AssessmentResult = {
-  opportunityId: string;
-  applicantId: string;
-  eligibility: {
-    status: GateStatus;
-    summary: string;
-    basis: string[];
-  };
-  fit: {
-    status: AssessmentStatus;
-    summary: string;
-    basis: string[];
-  };
-  readiness: {
-    status: AssessmentStatus;
-    summary: string;
-    basis: string[];
-  };
-  overallAssessment: string;
-  evaluatorLens: {
-    criterionId: string;
-    criterion: string;
-    apparentImportance: ImportanceLevel;
-    evidenceSource: Provenance;
-    evidenceBasis: string;
-    userEvidence: string;
-    evidenceStrength: AssessmentStatus;
-    gap: string;
-    confidence: "High" | "Medium" | "Low";
-  }[];
-  evidenceStrength: {
-    criterionId: string;
-    criterion: string;
-    strength: AssessmentStatus;
-    why: string;
-  }[];
-  gaps: {
-    criterionId: string;
-    criterion: string;
-    priority: ImportanceLevel;
-    missing: string;
-    whyItMatters: string;
-    likelyEffect: string;
-    fixability: FixabilityLevel;
-    action: string;
-  }[];
-  strengths: string[];
-  risks: string[];
-  effortVsUpside: {
-    effort: "Low" | "Moderate" | "High";
-    upside: string;
-    rationale: string;
-  };
-  recommendation: RecommendationLevel;
-  improvementActions: string[];
-  confidence: "High" | "Medium" | "Low";
-  evidenceBasis: string[];
-  generatedAt: string;
 };
 
 export const categoryDefinitions: {
@@ -528,6 +587,11 @@ export const opportunities: Opportunity[] = [
     description: "Seed support for startups working on proof of concept, prototype development, product trials, market entry or commercialization.",
     stage: "Seed / prototype",
     eligibility: ["DPIIT-recognized startup", "Incorporated not more than 2 years at application", "Indian promoter shareholding expectations"],
+    eligibilityRules: [
+      { id: "startup-route", label: "Startup or innovation route is relevant", profileField: "interests", operator: "includes", value: "student innovation funding", source: "Startup India / DPIIT scheme information", confidence: "medium" },
+      { id: "startup-india-location", label: "India-based applicant context", profileField: "location", operator: "exists", source: "Startup India / DPIIT scheme information", confidence: "medium" },
+      { id: "incubator-process", label: "Incubator route can be pursued", profileField: "interests", operator: "includes", value: "student innovation funding", source: "Startup India / DPIIT scheme information", confidence: "medium" }
+    ],
     access: ["Apply through a selected incubator", "Incubator evaluation and due diligence", "Milestone-based disbursement"],
     readiness: ["Pitch deck", "Prototype evidence", "Budget and fund-utilisation plan", "Incorporation and DPIIT recognition"],
     selectionCriteria: [
@@ -567,6 +631,11 @@ export const opportunities: Opportunity[] = [
     description: "Research support for ambitious projects with a strong scientific question, credible methodology and investigator capability.",
     stage: "Research proposal",
     eligibility: ["Eligible host institution", "Principal investigator affiliation", "Research proposal within call scope"],
+    eligibilityRules: [
+      { id: "host-institution", label: "Host institution is identified", profileField: "college", operator: "exists", source: "ANRF scheme and call information", confidence: "high" },
+      { id: "research-role", label: "Researcher or faculty profile", profileField: "role", operator: "includes", value: "research", source: "ANRF scheme and call information", confidence: "medium" },
+      { id: "proposal-scope", label: "Proposal or research field is known", profileField: "programme", operator: "exists", source: "ANRF scheme and call information", confidence: "high" }
+    ],
     access: ["Host institution endorsement", "Online proposal submission", "Ethics or institutional approvals where applicable"],
     readiness: ["Detailed proposal", "Budget", "CV and publications", "Institution endorsement", "Preliminary evidence where available"],
     selectionCriteria: [
@@ -644,6 +713,12 @@ export const opportunities: Opportunity[] = [
     description: "Scholarship support for women students admitted to eligible AICTE-approved technical degree or diploma programs.",
     stage: "Undergraduate / diploma study",
     eligibility: ["Woman student", "AICTE-approved institution", "Family income within notified limit"],
+    eligibilityRules: [
+      { id: "woman-student", label: "Woman student", profileField: "gender", operator: "equals", value: "Female", source: "AICTE / NSP scholarship information", confidence: "high" },
+      { id: "technical-programme", label: "Technical degree or diploma programme", profileField: "programme", operator: "includes", value: "B.Tech", source: "AICTE / NSP scholarship information", confidence: "high" },
+      { id: "approved-institution", label: "AICTE-approved institution", profileField: "institutionType", operator: "equals", value: "AICTE-approved", source: "AICTE / NSP scholarship information", confidence: "high" },
+      { id: "income-limit", label: "Family income within Rs 8 lakh", profileField: "income", operator: "lte", value: 8, source: "AICTE / NSP scholarship information", confidence: "high" }
+    ],
     access: ["Institution record verification", "Scholarship portal application", "Bank and Aadhaar alignment"],
     readiness: ["Admission proof", "Income certificate", "Bank details", "Institution verification"],
     selectionCriteria: [
@@ -1021,6 +1096,11 @@ export const opportunities: Opportunity[] = [
     description: "Support for SC students studying in notified top class institutions.",
     stage: "Higher education",
     eligibility: ["SC category", "Notified institution", "Income criteria"],
+    eligibilityRules: [
+      { id: "sc-category", label: "SC category", profileField: "category", operator: "equals", value: "SC", source: "Ministry of Social Justice and Empowerment scheme information", confidence: "high" },
+      { id: "notified-institution", label: "Notified institution", profileField: "college", operator: "exists", source: "Ministry of Social Justice and Empowerment scheme information", confidence: "medium" },
+      { id: "income-criteria", label: "Income information available", profileField: "income", operator: "exists", source: "Ministry of Social Justice and Empowerment scheme information", confidence: "medium" }
+    ],
     access: ["NSP application", "Institution verification", "Category and income checks"],
     readiness: ["Category certificate", "Income certificate", "Admission proof"],
     tags: ["SC", "Top class", "NSP"]
@@ -1485,319 +1565,355 @@ export function evaluateOpportunityAssessment(opportunity: Opportunity, response
   };
 }
 
-export function buildOpportunityAssessmentResult(opportunity: Opportunity, responses: Record<string, string>, applicant: DemoProfile = profile): AssessmentResult {
-  if (opportunity.id === "aicte-pragati-scholarship" && applicant.id === ananyaEvidencePassport.applicantId) {
-    return buildPragatiAssessmentFromEvidence(opportunity, applicant);
-  }
-
-  const assessment = evaluateOpportunityAssessment(opportunity, responses);
-  const criteria = assessment.criteria;
-  const hasCriteria = criteria.length > 0;
-  const strongCount = criteria.filter((criterion) => criterion.status === "Strong").length;
-  const moderateCount = criteria.filter((criterion) => criterion.status === "Moderate").length;
-  const weakCount = criteria.filter((criterion) => criterion.status === "Weak" || criterion.status === "Missing").length;
-  const demonstratedSignals = strongCount + moderateCount;
-  const score = hasCriteria ? demonstratedSignals / criteria.length : 0;
-  const eligibilityCriterion = criteria.find((criterion) => criterion.id.includes("eligibility"));
-  const readinessCriteria = criteria.filter((criterion) => criterion.id.includes("readiness") || criterion.id.includes("evidence"));
-
-  const eligibilityStatus: GateStatus =
-    eligibilityCriterion?.status === "Weak" || eligibilityCriterion?.status === "Missing"
-      ? eligibilityCriterion.status === "Missing" ? "Unknown" : "Fail"
-      : assessment.eligibility.some((gate) => gate.status === "Fail")
-        ? "Fail"
-        : assessment.eligibility.some((gate) => gate.status === "Unknown")
-          ? "Unknown"
-          : "Pass";
-
-  const fitStatus: AssessmentStatus =
-    !hasCriteria ? "Missing" : score >= 0.75 ? "Strong" : score >= 0.45 ? "Moderate" : weakCount ? "Weak" : "Missing";
-  const readinessStatus: AssessmentStatus = deriveReadinessStatus(readinessCriteria.length ? readinessCriteria : criteria);
-  const recommendation = chooseRecommendation(eligibilityStatus, fitStatus, readinessStatus, score, weakCount);
-  const gaps = criteria
-    .filter((criterion) => criterion.status !== "Strong")
-    .map((criterion) => ({
-      criterionId: criterion.id,
-      criterion: criterion.criterion,
-      priority: criterion.importance ?? inferImportance(criterion),
-      missing: criterion.gap,
-      whyItMatters: criterion.signal,
-      likelyEffect: criterion.likelyEffect ?? defaultLikelyEffect(criterion),
-      fixability: criterion.fixability ?? inferFixability(criterion),
-      action: criterion.action
-    }))
-    .sort((a, b) => gapPriorityScore(b) - gapPriorityScore(a));
-
-  const strengths = [
-    ...(opportunity.assessment?.strengths ?? []),
-    ...criteria.filter((criterion) => criterion.status === "Strong").map((criterion) => `${criterion.criterion}: ${criterion.evidenceFound}`)
-  ];
-
-  const risks = gaps.map((gap) => gap.likelyEffect).slice(0, 3);
-  const improvementActions = Array.from(new Set([...gaps.map((gap) => gap.action), ...(opportunity.assessment?.improvementActions ?? [])])).slice(0, 4);
-  const evidenceBasis = Array.from(new Set([
-    `${applicant.name}: ${applicant.programme}`,
-    `${applicant.cgpa}; Class 12 ${applicant.class12}`,
-    `${applicant.college} (${applicant.institutionType})`,
-    ...applicant.evidence.map((item) => `${item.label}: ${item.summary}`)
-  ]));
+export function buildOpportunityAssessmentResult(
+  opportunity: Opportunity,
+  responses: Record<string, string>,
+  applicant: DemoProfile = profile,
+  options: { now?: Date | string } = {}
+): AssessmentResult {
+  const eligibility = evaluateEligibility(opportunity, applicant);
+  const criteria = eligibility.status === "ineligible" ? [] : evaluateCompetitivenessCriteria(opportunity, responses, applicant);
+  const competitiveness = calculateCompetitiveness(criteria);
+  const confidence = deriveCanonicalConfidence(eligibility, competitiveness);
+  const gaps = buildCanonicalGaps(eligibility, criteria);
+  const strengths = buildCanonicalStrengths(opportunity, applicant, criteria);
+  const recommendation = chooseCanonicalRecommendation(eligibility.status, competitiveness, opportunity, options.now);
+  const recommendationLabel = labelForVerdict(recommendation.verdict);
+  const biggestGap = toDisplayGap(gaps[0]);
+  const improvementActions = Array.from(new Set(gaps.map((gap) => gap.suggestion).filter(Boolean))) as string[];
+  const strongestEvidence = strengths[0] ?? "No strong evidence captured yet.";
 
   return {
     opportunityId: opportunity.id,
+    profileId: applicant.id,
+    opportunityName: opportunity.name,
     applicantId: applicant.id,
-    eligibility: {
-      status: eligibilityStatus,
-      summary: eligibilityStatus === "Pass"
-        ? `${applicant.name} appears formally eligible for ${opportunity.name}.`
-        : eligibilityStatus === "Fail"
-          ? `A hard eligibility issue is visible for ${opportunity.name}.`
-          : `Disha needs more proof before confirming hard eligibility for ${opportunity.name}.`,
-      basis: assessment.eligibility.map((gate) => `${gate.label}: ${gate.note}`)
-    },
-    fit: {
-      status: fitStatus,
-      summary: fitStatus === "Strong"
-        ? `${opportunity.name} fits ${applicant.name}'s profile and available evidence.`
-        : fitStatus === "Moderate"
-          ? `${opportunity.name} could fit, but the evidence packet needs work.`
-          : `Current evidence does not make ${opportunity.name} a good use of time yet.`,
-      basis: criteria.map((criterion) => `${criterion.criterion}: ${criterion.status}`).slice(0, 4)
-    },
-    readiness: {
-      status: readinessStatus,
-      summary: readinessStatus === "Strong"
-        ? "The application packet is ready to move toward submission."
-        : readinessStatus === "Moderate"
-          ? "The application is worth preparing, with fixable issues before submission."
-          : "Readiness is not high enough to submit confidently yet.",
-      basis: assessment.readiness.map((gate) => `${gate.label}: ${gate.status}`)
-    },
-    overallAssessment: overallAssessmentSummary(recommendation, opportunity, applicant, gaps),
-    evaluatorLens: criteria.map((criterion) => ({
-      criterionId: criterion.id,
-      criterion: criterion.criterion,
-      apparentImportance: criterion.importance ?? inferImportance(criterion),
-      evidenceSource: criterion.source,
-      evidenceBasis: criterion.evidenceFound,
-      userEvidence: describeProfileEvidence(applicant, criterion),
-      evidenceStrength: criterion.status,
-      gap: criterion.gap,
-      confidence: criterion.confidence
-    })),
-    evidenceStrength: criteria.map((criterion) => ({
-      criterionId: criterion.id,
-      criterion: criterion.criterion,
-      strength: criterion.status,
-      why: criterion.status === "Strong" ? criterion.strongGap : criterion.gap
-    })),
+    eligibility,
+    competitiveness,
+    strengths,
     gaps,
-    strengths: Array.from(new Set(strengths)).slice(0, 5),
-    risks,
-    effortVsUpside: {
-      effort: gaps.length > 2 ? "High" : gaps.length ? "Moderate" : "Low",
-      upside: opportunity.funding,
-      rationale: gaps.length
-        ? `Upside is ${opportunity.funding}; the remaining effort is focused on ${gaps.slice(0, 2).map((gap) => gap.criterion.toLowerCase()).join(" and ")}.`
-        : `Upside is ${opportunity.funding}; no major student-owned gaps are visible.`
-    },
     recommendation,
-    improvementActions,
-    confidence: deriveConfidence(criteria),
-    evidenceBasis,
-    generatedAt: "2026-09-07T00:00:00+05:30"
-  };
-}
-
-function buildPragatiAssessmentFromEvidence(opportunity: Opportunity, applicant: DemoProfile): AssessmentResult {
-  const evidence = ananyaEvidencePassport.records;
-  const legalName = findEvidence(evidence, "legal-name");
-  const enrolment = findEvidence(evidence, "institution-enrolment");
-  const academics = findEvidence(evidence, "academic-record");
-  const familyIncome = findEvidence(evidence, "family-income");
-  const incomeCertificate = findEvidence(evidence, "income-certificate");
-  const bank = findEvidence(evidence, "bank-account");
-  const submissionPacket = findEvidence(evidence, "submission-packet");
-
-  const evaluatorLens: AssessmentResult["evaluatorLens"] = [
-    {
-      criterionId: "identity-and-applicant-route",
-      criterion: "Female student in eligible technical programme",
-      apparentImportance: "High",
-      evidenceSource: "Official criterion",
-      evidenceBasis: "Programme explicitly requires an eligible woman student in technical education.",
-      userEvidence: `${applicant.name}; ${applicant.gender}; ${enrolment?.value ?? applicant.programme}.`,
-      evidenceStrength: "Strong",
-      gap: "Supported by profile identity and institution enrolment evidence.",
-      confidence: "High"
-    },
-    {
-      criterionId: "income-threshold",
-      criterion: "Income within applicable limit",
-      apparentImportance: "High",
-      evidenceSource: "Official criterion",
-      evidenceBasis: "Programme income eligibility is a hard requirement; current proof is needed during submission and verification.",
-      userEvidence: `${familyIncome?.value ?? applicant.income}; ${incomeCertificate?.value ?? "income certificate needs review"}.`,
-      evidenceStrength: "Moderate",
-      gap: "Underlying income appears within threshold, but the current certificate is stale and can block submission or verification.",
-      confidence: "High"
-    },
-    {
-      criterionId: "academic-institution-evidence",
-      criterion: "Academic and institution evidence",
-      apparentImportance: "High",
-      evidenceSource: "Process-derived",
-      evidenceBasis: "Institution verification needs current enrolment and academic records to confirm the application packet.",
-      userEvidence: `${academics?.value ?? applicant.cgpa}; ${enrolment?.value ?? applicant.college}.`,
-      evidenceStrength: "Strong",
-      gap: "Strong evidence is available; keep it attached in the final packet.",
-      confidence: "High"
-    },
-    {
-      criterionId: "bank-payment-readiness",
-      criterion: "Bank and payment readiness",
-      apparentImportance: "Medium",
-      evidenceSource: "Process-derived",
-      evidenceBasis: "Payment is downstream of approval, but beneficiary/account consistency can become a blocker later.",
-      userEvidence: `${bank?.value ?? applicant.bank}; ${legalName?.value ?? applicant.name} should be used consistently.`,
-      evidenceStrength: "Moderate",
-      gap: "Bank details are available; make sure the application uses the full legal name before submission.",
-      confidence: "Medium"
-    }
-  ];
-
-  const gaps: AssessmentResult["gaps"] = [
-    {
-      criterionId: "income-threshold",
-      criterion: "Current income proof",
-      priority: "High",
-      missing: "The available income certificate is stale for submission.",
-      whyItMatters: "Income is a hard eligibility requirement and weak proof can cause a return request even if the underlying income is within limit.",
-      likelyEffect: "Application can be blocked or returned during submission or institution verification.",
-      fixability: "Easy",
-      action: "Refresh the income certificate before final submission."
-    },
-    {
-      criterionId: "bank-payment-readiness",
-      criterion: "Name consistency for payment",
-      priority: "Medium",
-      missing: "The final application should use Ananya Rao exactly as the beneficiary name.",
-      whyItMatters: "PFMS and bank validation require beneficiary details to match the application record.",
-      likelyEffect: "If shortened or mismatched, this can become a payment blocker after approval.",
-      fixability: "Moderate",
-      action: "Use the full legal name Ananya Rao consistently across the application and bank details."
-    }
-  ];
-
-  return {
-    opportunityId: opportunity.id,
-    applicantId: applicant.id,
-    eligibility: {
-      status: "Pass",
-      summary: `${applicant.name} appears formally eligible for ${opportunity.name}.`,
-      basis: [
-        `Identity: ${applicant.gender}; ${legalName?.note ?? "legal-name evidence is available."}`,
-        `Education: ${enrolment?.note ?? applicant.programme}`,
-        `Income: ${familyIncome?.note ?? "recorded income appears within threshold."}`
-      ]
-    },
-    fit: {
-      status: "Strong",
-      summary: `${opportunity.name} fits ${applicant.name}'s profile: she is a woman student in an AICTE-approved technical programme with strong academic/institution evidence.`,
-      basis: [`${enrolment?.label}: ${enrolment?.value}`, `${academics?.label}: ${academics?.value}`].filter(Boolean)
-    },
-    readiness: {
-      status: "Moderate",
-      summary: "The application is worth preparing, but the income proof should be refreshed before submission.",
-      basis: [
-        `${submissionPacket?.label ?? "Document packet"}: ${submissionPacket?.note ?? "Most documents are ready, one proof needs action."}`,
-        `${incomeCertificate?.label ?? "Income certificate"}: ${incomeCertificate?.note ?? "Refresh before final submission."}`,
-        `${bank?.label ?? "Bank account"}: ${bank?.note ?? "Bank details are available."}`
-      ]
-    },
-    overallAssessment: `${opportunity.name} is worth pursuing for ${applicant.name}: core eligibility and fit are strong, and the biggest readiness issue is a fixable document problem.`,
-    evaluatorLens,
-    evidenceStrength: evaluatorLens.map((item) => ({
-      criterionId: item.criterionId,
-      criterion: item.criterion,
-      strength: item.evidenceStrength,
-      why: item.gap
-    })),
-    gaps,
-    strengths: [
-      `${enrolment?.label}: ${enrolment?.value}`,
-      `${academics?.label}: ${academics?.value}`,
-      `${familyIncome?.label}: ${familyIncome?.value} appears within the programme threshold.`,
-      `${bank?.label}: ${bank?.value}`
-    ].filter(Boolean),
-    risks: gaps.map((gap) => gap.likelyEffect),
+    confidence,
+    evidenceFacts: profileFacts(applicant),
+    overallAssessment: recommendation.explanation,
+    strongestEvidence,
+    biggestGap,
+    nextAction: improvementActions[0] ?? defaultNextAction(recommendation.verdict),
     effortVsUpside: {
-      effort: "Moderate",
+      effort: gaps.filter((gap) => gap.improvable).length > 2 ? "High" : gaps.some((gap) => gap.improvable) ? "Moderate" : "Low",
       upside: opportunity.funding,
-      rationale: `The upside is ${opportunity.funding}; the main student-owned effort is refreshing income proof before submission.`
+      rationale: effortRationale(opportunity, gaps, recommendation.verdict)
     },
-    recommendation: "Worth pursuing",
-    improvementActions: gaps.map((gap) => gap.action),
-    confidence: "High",
-    evidenceBasis: evidence.map((record) => `${record.label}: ${record.value} (${record.status}; ${record.source})`),
-    generatedAt: "2026-09-07T00:00:00+05:30"
+    recommendationLabel,
+    recommendationKey: recommendationKeyFor(recommendationLabel),
+    improvementActions,
+    generatedAt: "2026-09-08T00:00:00+05:30"
   };
-}
-
-function findEvidence(records: EvidenceRecord[], id: string) {
-  return records.find((record) => record.id === id);
 }
 
 export function assistantReply(opportunity: Opportunity, assessment: OpportunityAssessment | AssessmentResult, prompt: string) {
-  const result = "recommendation" in assessment ? assessment : buildOpportunityAssessmentResult(opportunity, Object.fromEntries(assessment.criteria.map((criterion) => [criterion.answerKey, findResponseFromCriterion(criterion)])));
-
-  if (!result.evaluatorLens.length) {
-    return `Detailed assessment is not available for ${opportunity.name} yet. Disha can still show access, eligibility and readiness information without inventing a score.`;
-  }
-
+  const result = "competitiveness" in assessment ? assessment : buildOpportunityAssessmentResult(opportunity, Object.fromEntries(assessment.criteria.map((criterion) => [criterion.answerKey, findResponseFromCriterion(criterion)])));
   const normalised = prompt.toLowerCase();
+  const firstBlocker = result.eligibility.blockers[0];
   const biggestGap = result.gaps[0];
 
-  if (normalised.includes("weak") || normalised.includes("marked")) {
-    if (!biggestGap) return `${opportunity.name} has no weak signals in the current assessment. Keep the evidence packet concise and submit through the required access route.`;
-    const lens = result.evaluatorLens.find((criterion) => criterion.criterionId === biggestGap.criterionId);
-    return `${biggestGap.criterion} needs attention because ${lens?.evidenceBasis ?? biggestGap.missing}. It matters because ${biggestGap.whyItMatters} Next: ${biggestGap.action}`;
+  if (normalised.includes("eligible")) {
+    return `Eligibility: ${sentenceCase(result.eligibility.status)}. ${firstBlocker ? `Blocker: ${firstBlocker}.` : eligibilitySummary(result)} Disha is using the saved canonical assessment, so chat cannot override the eligibility result.`;
   }
 
-  if (normalised.includes("eligible")) {
-    return `${result.eligibility.summary} Basis: ${result.eligibility.basis.slice(0, 2).join(" ")}`;
+  if (normalised.includes("score") || normalised.includes("fit") || normalised.includes("competitive")) {
+    if (result.competitiveness.score === null) {
+      return `Competitive fit cannot be reliably estimated yet. Disha has usable evidence for ${result.competitiveness.assessedWeightPercent}% of known selection weight.`;
+    }
+    return `Competitive fit: ${result.competitiveness.score}/100, ${result.competitiveness.band}. This is separate from formal eligibility, which is ${result.eligibility.status}.`;
+  }
+
+  if (normalised.includes("weak") || normalised.includes("marked") || normalised.includes("missing") || normalised.includes("improve")) {
+    if (!biggestGap) return `${opportunity.name} has no major gap in the current canonical assessment. Keep the evidence packet concise and current.`;
+    return `${biggestGap.label} needs attention. ${biggestGap.suggestion ?? "Add clearer supporting facts before applying."}`;
   }
 
   if (normalised.includes("apply") || normalised.includes("right now") || normalised.includes("worth")) {
-    return `${result.recommendation}. ${result.overallAssessment} First action: ${result.improvementActions[0] ?? "keep the application evidence concise and current"}.`;
+    return `${labelForVerdict(result.recommendation.verdict)}. ${result.recommendation.explanation}`;
   }
 
-  if (normalised.includes("document") || normalised.includes("missing")) {
-    return `For ${opportunity.name}, keep these ready: ${opportunity.readiness.slice(0, 4).join(", ")}. Disha will treat missing documents as readiness gaps, not selection odds.`;
+  return `${opportunity.name}: ${labelForVerdict(result.recommendation.verdict)}. ${result.nextAction}`;
+}
+
+function evaluateEligibility(opportunity: Opportunity, applicant: DemoProfile): AssessmentResult["eligibility"] {
+  const rules = opportunity.eligibilityRules?.length ? opportunity.eligibilityRules : fallbackEligibilityRules(opportunity);
+  const conditions = rules.map((rule) => {
+    const rawValue = applicant[rule.profileField as keyof DemoProfile];
+    const result = evaluateRule(rawValue, rule);
+    return {
+      id: rule.id,
+      label: rule.label,
+      result,
+      userValue: stringifyValue(rawValue),
+      requiredValue: stringifyValue(rule.value),
+      explanation: explainEligibility(rule, result, rawValue),
+      source: rule.source
+    };
+  });
+  const blockers = conditions.filter((condition) => condition.result === "fail").map((condition) => condition.label);
+  const status: EligibilityStatus = blockers.length ? "ineligible" : conditions.some((condition) => condition.result === "unknown") ? "uncertain" : "eligible";
+  return { status, conditions, blockers };
+}
+
+function evaluateCompetitivenessCriteria(opportunity: Opportunity, responses: Record<string, string>, applicant: DemoProfile): AssessmentResult["competitiveness"]["criteria"] {
+  const sourceCriteria = getOpportunityCriteria(opportunity);
+  const weights = normalizedWeights(sourceCriteria);
+  return sourceCriteria.map((criterion, index) => {
+    const answer = responses[criterion.answerKey];
+    const evidenceScore = evidenceScoreForAnswer(criterion, answer);
+    return {
+      id: criterion.id,
+      label: criterion.criterion,
+      importance: toLowerImportance(criterion.importance ?? inferImportance(criterion)),
+      weight: weights[index] ?? 0,
+      basis: criterion.basis ?? basisFromSource(criterion.source),
+      evidenceStrength: evidenceStrengthForScore(evidenceScore),
+      evidenceScore,
+      explanation: criterionExplanation(criterion, answer, evidenceScore),
+      evidenceFromProfile: profileEvidenceForCriterion(applicant, criterion),
+      source: criterion.source === "Unknown / criteria not publicly disclosed" ? undefined : criterion.source
+    };
+  });
+}
+
+function calculateCompetitiveness(criteria: AssessmentResult["competitiveness"]["criteria"]): AssessmentResult["competitiveness"] {
+  if (!criteria.length || criteria.every((criterion) => criterion.basis === "unknown")) {
+    return { score: null, band: "unknown", assessedWeightPercent: 0, criteria };
   }
 
-  return `${opportunity.name}: ${result.recommendation}. ${result.readiness.summary} The next useful action is ${result.improvementActions[0] ?? "keep the application evidence concise and current"}.`;
+  const totalWeight = sum(criteria.map((criterion) => criterion.weight));
+  const knownCriteria = criteria.filter((criterion) => criterion.evidenceScore !== null);
+  const knownWeight = sum(knownCriteria.map((criterion) => criterion.weight));
+  const assessedWeightPercent = totalWeight ? Math.round((knownWeight / totalWeight) * 100) : 0;
+
+  if (!totalWeight || knownWeight / totalWeight < 0.6) {
+    return { score: null, band: "unknown", assessedWeightPercent, criteria };
+  }
+
+  const rawScore = knownCriteria.reduce((total, criterion) => total + criterion.weight * ((criterion.evidenceScore ?? 0) / 4), 0);
+  const score = Math.round((rawScore / knownWeight) * 100);
+  return { score, band: bandForScore(score), assessedWeightPercent, criteria };
 }
 
-function deriveReadinessStatus(criteria: EvaluatedCriterion[]): AssessmentStatus {
-  if (!criteria.length) return "Missing";
-  if (criteria.some((criterion) => criterion.status === "Weak" || criterion.status === "Missing")) return "Weak";
-  if (criteria.some((criterion) => criterion.status === "Moderate")) return "Moderate";
-  return "Strong";
+function deriveCanonicalConfidence(
+  eligibility: AssessmentResult["eligibility"],
+  competitiveness: AssessmentResult["competitiveness"]
+): AssessmentResult["confidence"] {
+  const totalCriteriaWeight = sum(competitiveness.criteria.map((criterion) => criterion.weight));
+  const publicWeight = sum(competitiveness.criteria.filter((criterion) => criterion.basis === "explicit" || criterion.basis === "strongly_inferred").map((criterion) => criterion.weight));
+  const publicCriteriaCoverage = totalCriteriaWeight ? Math.round((publicWeight / totalCriteriaWeight) * 100) : 0;
+  const unknownEligibility = eligibility.conditions.some((condition) => condition.result === "unknown");
+  const inferredOrMissing = competitiveness.criteria.some((criterion) => criterion.basis === "weakly_inferred" || criterion.basis === "unknown" || criterion.evidenceScore === null);
+  const level: ConfidenceLevel =
+    !unknownEligibility && publicCriteriaCoverage >= 80 && competitiveness.assessedWeightPercent >= 80 && !inferredOrMissing
+      ? "high"
+      : publicCriteriaCoverage >= 60 && competitiveness.assessedWeightPercent >= 60
+        ? "medium"
+        : "low";
+
+  return {
+    level,
+    publicCriteriaCoverage,
+    userEvidenceCoverage: competitiveness.assessedWeightPercent,
+    explanation: confidenceExplanation(level, publicCriteriaCoverage, competitiveness.assessedWeightPercent, unknownEligibility)
+  };
 }
 
-function chooseRecommendation(
-  eligibilityStatus: GateStatus,
-  fitStatus: AssessmentStatus,
-  readinessStatus: AssessmentStatus,
-  score: number,
-  weakCount: number
-): RecommendationLevel {
-  if (eligibilityStatus === "Fail") return "Not currently worth effort";
-  if (fitStatus === "Strong" && readinessStatus === "Strong" && score >= 0.85) return "Strongly pursue";
-  if (fitStatus === "Strong" && (readinessStatus === "Strong" || readinessStatus === "Moderate")) return "Worth pursuing";
-  if (score >= 0.45 && weakCount <= 2) return "Pursue after improving";
-  if (eligibilityStatus === "Unknown" || fitStatus === "Missing") return "Low priority";
-  return "Not currently worth effort";
+function chooseCanonicalRecommendation(
+  eligibilityStatus: EligibilityStatus,
+  competitiveness: AssessmentResult["competitiveness"],
+  opportunity: Opportunity,
+  now: Date | string | undefined
+): AssessmentResult["recommendation"] {
+  if (eligibilityStatus === "ineligible") {
+    return { verdict: "do_not_apply", explanation: "Do not apply: a hard eligibility requirement is not met. Competitiveness does not override formal eligibility." };
+  }
+  if (eligibilityStatus === "uncertain") {
+    return { verdict: "verify_eligibility", explanation: "Verify eligibility before investing application effort. At least one hard requirement is still unknown." };
+  }
+  if (competitiveness.score === null) {
+    return { verdict: "insufficient_information", explanation: "Competitiveness cannot be reliably estimated from available public criteria and user evidence." };
+  }
+
+  const urgent = isDeadlineUrgent(opportunity.deadline, now);
+  if (competitiveness.score >= 75) {
+    return { verdict: "strong_opportunity", explanation: `Strong opportunity: you are formally eligible and the known evidence supports a ${competitiveness.score}/100 competitive fit.` };
+  }
+  if (competitiveness.score >= 55) {
+    return { verdict: "worth_applying", explanation: `Worth applying: you are eligible and have credible evidence across several important criteria. Competitive fit is ${competitiveness.score}/100.` };
+  }
+  if (competitiveness.score >= 35) {
+    return urgent
+      ? { verdict: "low_priority", explanation: `Low-priority application: competitive fit is ${competitiveness.score}/100, and the deadline is too close for the main gaps to be fixed confidently.` }
+      : { verdict: "improve_before_applying", explanation: `Improve before applying: you are eligible, but competitive fit is ${competitiveness.score}/100 and important evidence gaps remain.` };
+  }
+  return { verdict: "low_priority", explanation: `Low priority: you are eligible, but the known evidence currently supports only a ${competitiveness.score}/100 competitive fit.` };
+}
+
+function buildCanonicalGaps(
+  eligibility: AssessmentResult["eligibility"],
+  criteria: AssessmentResult["competitiveness"]["criteria"]
+): AssessmentResult["gaps"] {
+  const eligibilityGaps = eligibility.conditions
+    .filter((condition) => condition.result !== "pass")
+    .map((condition) => ({
+      label: condition.label,
+      severity: condition.result === "fail" ? "critical" as const : "important" as const,
+      improvable: condition.result === "unknown",
+      suggestion: condition.result === "fail" ? "Choose opportunities where this hard rule is satisfied." : `Confirm ${condition.label.toLowerCase()} with a factual profile field or document.`
+    }));
+
+  const evidenceGaps = criteria
+    .filter((criterion) => criterion.evidenceScore === null || criterion.evidenceScore <= 2)
+    .map((criterion) => ({
+      label: criterion.label,
+      severity: criterion.importance === "high" ? "important" as const : "minor" as const,
+      improvable: true,
+      suggestion: criterion.evidenceScore === null
+        ? `Add factual evidence for ${criterion.label.toLowerCase()} before Disha estimates fit.`
+        : `Strengthen ${criterion.label.toLowerCase()} with ownership, output, scale or validation.`
+    }));
+
+  return [...eligibilityGaps, ...evidenceGaps].sort((a, b) => gapSeverityScore(b) - gapSeverityScore(a));
+}
+
+function buildCanonicalStrengths(opportunity: Opportunity, applicant: DemoProfile, criteria: AssessmentResult["competitiveness"]["criteria"]) {
+  const criterionStrengths = criteria
+    .filter((criterion) => criterion.evidenceScore !== null && criterion.evidenceScore >= 3)
+    .map((criterion) => `${criterion.label}: ${criterion.explanation}`);
+  return Array.from(new Set([...(opportunity.assessment?.strengths ?? []), ...criterionStrengths, ...applicant.strengths])).slice(0, 6);
+}
+
+function fallbackEligibilityRules(opportunity: Opportunity): EligibilityRule[] {
+  if (!opportunity.eligibility.length) {
+    return [{ id: "eligibility-information", label: "Published eligibility information", profileField: "citizenship", operator: "exists", source: opportunity.officialSource, confidence: "low" }];
+  }
+  return opportunity.eligibility.slice(0, 4).map((label, index) => ({
+    id: `eligibility-${index + 1}`,
+    label,
+    profileField: "citizenship" as const,
+    operator: "exists" as const,
+    source: opportunity.officialSource,
+    confidence: "low" as const
+  }));
+}
+
+function evaluateRule(rawValue: unknown, rule: EligibilityRule): EligibilityConditionResult {
+  if (isMissing(rawValue)) return "unknown";
+  const required = rule.value;
+  if (rule.operator !== "exists" && required === undefined) return "unknown";
+
+  const values = Array.isArray(rawValue) ? rawValue.map(normalize) : [normalize(rawValue)];
+  const requiredValues = Array.isArray(required) && rule.operator !== "between" ? required.map(normalize) : [normalize(required)];
+  const numericValue = parseComparableNumber(rawValue);
+  const numericRequired = parseComparableNumber(required);
+
+  switch (rule.operator) {
+    case "exists":
+      return "pass";
+    case "equals":
+      return values.some((value) => requiredValues.includes(value)) ? "pass" : "fail";
+    case "not_equals":
+      return values.every((value) => !requiredValues.includes(value)) ? "pass" : "fail";
+    case "includes":
+      return values.some((value) => requiredValues.some((requiredValue) => value.includes(requiredValue))) ? "pass" : "fail";
+    case "excludes":
+      return values.every((value) => requiredValues.every((requiredValue) => !value.includes(requiredValue))) ? "pass" : "fail";
+    case "one_of":
+      return values.some((value) => requiredValues.some((requiredValue) => value.includes(requiredValue) || requiredValue.includes(value))) ? "pass" : "fail";
+    case "gte":
+      return numericValue === null || numericRequired === null ? "unknown" : numericValue >= numericRequired ? "pass" : "fail";
+    case "lte":
+      return numericValue === null || numericRequired === null ? "unknown" : numericValue <= numericRequired ? "pass" : "fail";
+    case "between": {
+      const range = Array.isArray(required) ? required : null;
+      if (numericValue === null || !range || typeof range[0] !== "number" || typeof range[1] !== "number") return "unknown";
+      return numericValue >= range[0] && numericValue <= range[1] ? "pass" : "fail";
+    }
+    case "boolean": {
+      const bool = booleanValue(rawValue);
+      return bool === null || typeof required !== "boolean" ? "unknown" : bool === required ? "pass" : "fail";
+    }
+  }
+}
+
+function normalizedWeights(criteria: EvaluatorCriterion[]) {
+  if (!criteria.length) return [];
+  const officialWeights = criteria.map((criterion) => criterion.weight);
+  if (officialWeights.every((weight) => typeof weight === "number")) {
+    return officialWeights as number[];
+  }
+  const raw = criteria.map((criterion) => {
+    const importance = criterion.importance ?? inferImportance(criterion);
+    return importance === "High" ? 3 : importance === "Medium" ? 2 : 1;
+  });
+  const total = sum(raw);
+  return raw.map((weight) => Math.round((weight / total) * 1000) / 10);
+}
+
+function evidenceScoreForAnswer(criterion: EvaluatorCriterion, answer: string | undefined): EvidenceScore {
+  if (!answer) return null;
+  if (criterion.strongAnswers.includes(answer)) return 4;
+  if (criterion.moderateAnswers.includes(answer)) return 3;
+  const normalizedAnswer = normalize(answer);
+  if (/\b(no|none|not|unclear|unknown|missing)\b/.test(normalizedAnswer)) return 0;
+  if (normalizedAnswer.includes("broad") || normalizedAnswer.includes("idea only") || normalizedAnswer.includes("solo founder") || normalizedAnswer.includes("early researcher")) return 1;
+  return 2;
+}
+
+function evidenceStrengthForScore(score: EvidenceScore): EvidenceStrength {
+  if (score === null) return "unknown";
+  if (score === 0) return "none";
+  if (score === 1) return "claim_only";
+  if (score === 2) return "weak";
+  if (score === 3) return "credible";
+  return "strong";
+}
+
+function criterionExplanation(criterion: EvaluatorCriterion, answer: string | undefined, score: EvidenceScore) {
+  if (score === null) return `Disha does not yet know enough about ${criterion.criterion.toLowerCase()}.`;
+  if (score >= 3) return criterion.evidence[answer ?? ""] ?? criterion.strongGap;
+  if (score === 0) return criterion.weakGap;
+  return criterion.moderateGap;
+}
+
+function profileEvidenceForCriterion(applicant: DemoProfile, criterion: EvaluatorCriterion) {
+  const selected = applicant.evidence.filter((item) => criterion.profileEvidenceIds?.includes(item.id));
+  const evidence = selected.length ? selected : applicant.evidence.filter((item) => normalize(`${item.id} ${item.label}`).includes(firstToken(criterion.id)));
+  if (evidence.length) return evidence.map((item) => `${item.label}: ${item.summary}`);
+  return [describeProfileEvidence(applicant, criterion)].filter(Boolean);
+}
+
+function profileFacts(applicant: DemoProfile): EvidenceFact[] {
+  return applicant.evidence.map((item) => ({
+    type: item.id.includes("research") ? "research" : item.id.includes("leadership") ? "leadership" : item.id.includes("project") ? "work" : item.id.includes("cgpa") || item.id.includes("academic") ? "academic" : "document",
+    verification: item.source === "document" ? "documented" : item.source === "activity" ? "described" : "self_reported",
+    summary: item.summary
+  }));
+}
+
+function explainEligibility(rule: EligibilityRule, result: EligibilityConditionResult, rawValue: unknown) {
+  if (result === "unknown") return `Disha needs ${rule.label.toLowerCase()} to evaluate this hard rule.`;
+  if (result === "pass") return `${stringifyValue(rawValue) || "The profile value"} satisfies ${rule.label.toLowerCase()}.`;
+  return `${stringifyValue(rawValue) || "The profile value"} does not satisfy ${rule.label.toLowerCase()}.`;
+}
+
+function basisFromSource(source: Provenance): CriterionBasis {
+  if (source === "Official criterion") return "explicit";
+  if (source === "Process-derived") return "strongly_inferred";
+  if (source === "Historical") return "weakly_inferred";
+  return "unknown";
+}
+
+function toLowerImportance(importance: ImportanceLevel): "high" | "medium" | "low" {
+  if (importance === "High") return "high";
+  if (importance === "Medium") return "medium";
+  return "low";
 }
 
 function inferImportance(criterion: EvaluatorCriterion): ImportanceLevel {
@@ -1807,36 +1923,133 @@ function inferImportance(criterion: EvaluatorCriterion): ImportanceLevel {
   return "Low";
 }
 
-function inferFixability(criterion: EvaluatorCriterion): FixabilityLevel {
-  if (criterion.id.includes("eligibility") || criterion.id.includes("readiness") || criterion.answerKey.includes("documents")) return "Easy";
-  if (criterion.source === "Process-derived") return "Moderate";
-  return "Hard";
+function bandForScore(score: number): CompetitivenessBand {
+  if (score >= 75) return "strong";
+  if (score >= 55) return "competitive";
+  if (score >= 35) return "developing";
+  return "weak";
 }
 
-function gapPriorityScore(gap: { priority: ImportanceLevel; fixability: FixabilityLevel }) {
-  const importance = gap.priority === "High" ? 3 : gap.priority === "Medium" ? 2 : 1;
-  const fixability = gap.fixability === "Easy" ? 3 : gap.fixability === "Moderate" ? 2 : gap.fixability === "Hard" ? 1 : 0;
-  return importance * 10 + fixability;
+function labelForVerdict(verdict: RecommendationVerdict): RecommendationLevel {
+  if (verdict === "strong_opportunity") return "Strongly pursue";
+  if (verdict === "worth_applying") return "Worth pursuing";
+  if (verdict === "improve_before_applying") return "Pursue after improving";
+  if (verdict === "low_priority") return "Low priority";
+  if (verdict === "verify_eligibility") return "Verify eligibility";
+  if (verdict === "do_not_apply") return "Do not apply";
+  return "Insufficient information";
 }
 
-function defaultLikelyEffect(criterion: EvaluatorCriterion) {
-  if (criterion.id.includes("eligibility")) return "A hard requirement may block application submission or verification.";
-  if (criterion.id.includes("readiness")) return "A readiness issue may create a return request after submission.";
-  return "Reviewers may discount this part of the application if the evidence remains thin.";
+function recommendationKeyFor(recommendation: RecommendationLevel): RecommendationKey {
+  if (recommendation === "Strongly pursue") return "strongly_pursue";
+  if (recommendation === "Worth pursuing") return "worth_pursuing";
+  if (recommendation === "Pursue after improving") return "pursue_after_improving";
+  if (recommendation === "Low priority") return "low_priority";
+  if (recommendation === "Verify eligibility") return "verify_eligibility";
+  if (recommendation === "Do not apply") return "do_not_apply";
+  return "insufficient_information";
 }
 
-function deriveConfidence(criteria: EvaluatedCriterion[]) {
-  if (!criteria.length) return "Low";
-  if (criteria.every((criterion) => criterion.confidence === "High")) return "High";
-  if (criteria.some((criterion) => criterion.confidence === "Low")) return "Medium";
-  return "Medium";
+function toDisplayGap(gap: AssessmentResult["gaps"][number] | undefined): AssessmentResult["biggestGap"] {
+  if (!gap) return null;
+  return {
+    criterionId: gap.label.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+    criterion: gap.label,
+    summary: gap.suggestion ?? gap.label,
+    whyItMatters: gap.severity === "critical" ? "This is a formal eligibility blocker." : "This criterion can materially affect the assessment.",
+    action: gap.suggestion ?? "Add clearer evidence."
+  };
+}
+
+function effortRationale(opportunity: Opportunity, gaps: AssessmentResult["gaps"], verdict: RecommendationVerdict) {
+  if (verdict === "do_not_apply") return `Upside is ${opportunity.funding}, but a formal eligibility blocker comes first.`;
+  if (!gaps.length) return `Upside is ${opportunity.funding}; no major gaps are visible in the current assessment.`;
+  return `Upside is ${opportunity.funding}; remaining effort is focused on ${gaps.slice(0, 2).map((gap) => gap.label.toLowerCase()).join(" and ")}.`;
+}
+
+function defaultNextAction(verdict: RecommendationVerdict) {
+  if (verdict === "verify_eligibility") return "Confirm the unknown hard requirement before preparing the application.";
+  if (verdict === "do_not_apply") return "Move this lower and choose an opportunity where the hard rules pass.";
+  if (verdict === "insufficient_information") return "Add evidence for the highest-weight unknown criterion.";
+  return "Use the biggest evidence gap to strengthen the application packet.";
+}
+
+function eligibilitySummary(result: AssessmentResult) {
+  const passCount = result.eligibility.conditions.filter((condition) => condition.result === "pass").length;
+  return `You meet ${passCount} of ${result.eligibility.conditions.length} checked formal requirements.`;
+}
+
+function confidenceExplanation(level: ConfidenceLevel, publicCoverage: number, userCoverage: number, unknownEligibility: boolean) {
+  if (level === "high") return "Most eligibility and selection criteria are documented, and user evidence coverage is strong.";
+  if (unknownEligibility) return "At least one hard eligibility field is unknown, so Disha is cautious.";
+  if (level === "medium") return `Some selection factors are inferred or some user evidence is missing. Public criteria coverage is ${publicCoverage}% and user evidence coverage is ${userCoverage}%.`;
+  return "The opportunity publishes limited criteria or the profile is too incomplete for a confident assessment.";
+}
+
+function isDeadlineUrgent(deadline: string, now: Date | string | undefined) {
+  const parsed = parseIsoDate(deadline);
+  if (!parsed) return false;
+  const current = now ? new Date(now) : new Date("2026-09-08T00:00:00+05:30");
+  const diffDays = (parsed.getTime() - current.getTime()) / (1000 * 60 * 60 * 24);
+  return diffDays >= 0 && diffDays <= 2;
+}
+
+function parseIsoDate(value: string) {
+  const match = value.match(/\b(\d{4}-\d{2}-\d{2})\b/);
+  return match ? new Date(`${match[1]}T23:59:59+05:30`) : null;
+}
+
+function findResponseFromCriterion(criterion: EvaluatedCriterion) {
+  return criterion.evidenceFound === "No evidence captured yet." ? "" : criterion.evidenceFound;
+}
+
+function gapSeverityScore(gap: AssessmentResult["gaps"][number]) {
+  return gap.severity === "critical" ? 3 : gap.severity === "important" ? 2 : 1;
+}
+
+function sum(values: number[]) {
+  return values.reduce((total, value) => total + value, 0);
+}
+
+function firstToken(value: string) {
+  return normalize(value).split(/[-\s]/)[0] ?? "";
+}
+
+function normalize(value: unknown) {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+function stringifyValue(value: unknown) {
+  if (value === undefined || value === null) return undefined;
+  if (Array.isArray(value)) return value.join(", ");
+  return String(value);
+}
+
+function isMissing(value: unknown) {
+  if (value === undefined || value === null) return true;
+  if (Array.isArray(value)) return value.length === 0;
+  const normalised = normalize(value);
+  return !normalised || normalised === "not provided" || normalised === "not confirmed" || normalised.startsWith("your ");
+}
+
+function booleanValue(value: unknown) {
+  const normalised = normalize(value);
+  if (["yes", "true", "verified", "available", "added"].includes(normalised)) return true;
+  if (["no", "false", "missing", "not added"].includes(normalised)) return false;
+  return null;
+}
+
+function parseComparableNumber(value: unknown) {
+  if (typeof value === "number") return value;
+  if (Array.isArray(value)) return null;
+  const text = normalize(value);
+  if (!text) return null;
+  const match = text.match(/([0-9]+(?:\.[0-9]+)?)/);
+  if (!match) return null;
+  return Number(match[1]);
 }
 
 function describeProfileEvidence(applicant: DemoProfile, criterion: EvaluatorCriterion) {
-  const selectedEvidence = applicant.evidence.filter((item) => criterion.profileEvidenceIds?.includes(item.id));
-  if (selectedEvidence.length) {
-    return selectedEvidence.map((item) => `${item.label}: ${item.summary}`).join("; ");
-  }
   if (criterion.id.includes("eligibility")) {
     return `${applicant.gender}; ${applicant.programme}; ${applicant.institutionType} institution; family income ${applicant.income}.`;
   }
@@ -1849,24 +2062,8 @@ function describeProfileEvidence(applicant: DemoProfile, criterion: EvaluatorCri
   return applicant.evidence.map((item) => `${item.label}: ${item.summary}`).join("; ");
 }
 
-function overallAssessmentSummary(recommendation: RecommendationLevel, opportunity: Opportunity, applicant: DemoProfile, gaps: AssessmentResult["gaps"]) {
-  if (recommendation === "Worth pursuing") {
-    return `${opportunity.name} is worth pursuing for ${applicant.name}: fit and eligibility are strong enough, and the remaining issues are fixable before submission.`;
-  }
-  if (recommendation === "Strongly pursue") {
-    return `${opportunity.name} is a strong next application for ${applicant.name}. The evidence packet is ready to move forward.`;
-  }
-  if (recommendation === "Pursue after improving") {
-    return `${opportunity.name} could be worth pursuing after improving ${gaps[0]?.criterion.toLowerCase() ?? "the evidence packet"}.`;
-  }
-  if (recommendation === "Low priority") {
-    return `${opportunity.name} should not be the first priority until Disha has stronger proof of eligibility and fit.`;
-  }
-  return `${opportunity.name} is not currently worth the effort because a hard requirement or high-impact gap is unresolved.`;
-}
-
-function findResponseFromCriterion(criterion: EvaluatedCriterion) {
-  return criterion.evidenceFound === "No evidence captured yet." ? "" : criterion.evidenceFound;
+function sentenceCase(value: string) {
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
 function buildGateResults(items: string[], responses: Record<string, string>, readiness = false) {

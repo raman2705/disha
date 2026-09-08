@@ -123,8 +123,8 @@ export default function PreflightPage() {
             resolved={certificateReplaced}
             severity="Required"
           title={guidedDemoActive ? "Refresh current income certificate" : "Income certificate may expire during verification"}
-          explanation={guidedDemoActive ? firstIssue?.missing ?? "Your current income proof should be refreshed before final submission." : "Your income certificate expires shortly after the application deadline. If verification happens later, your institute may ask for a newer certificate."}
-          why={guidedDemoActive ? firstIssue?.action ?? "Refresh the supporting detail if available." : "Replace it with a newer certificate if available."}
+          explanation={guidedDemoActive ? firstIssue?.label ?? "Your current income proof should be refreshed before final submission." : "Your income certificate expires shortly after the application deadline. If verification happens later, your institute may ask for a newer certificate."}
+          why={guidedDemoActive ? firstIssue?.suggestion ?? "Refresh the supporting detail if available." : "Replace it with a newer certificate if available."}
           actor="You"
           cta={guidedDemoActive ? "Refresh certificate" : "Replace certificate"}
           icon={<RefreshCw size={18} />}
@@ -134,8 +134,8 @@ export default function PreflightPage() {
             resolved={documentAdded}
             severity="Warning"
           title={guidedDemoActive ? "Confirm legal name matches bank record" : "Institute enrolment proof missing"}
-          explanation={guidedDemoActive ? secondIssue?.missing ?? "Confirm the full legal name matches the bank record before submission." : `Add your copy of current enrolment proof so ${institution.name} can complete verification without returning the application.`}
-          why={guidedDemoActive ? secondIssue?.action ?? "Use the same legal name everywhere." : `Your upload is the part you control. ${institution.name} still owns the scholarship verification action after submission.`}
+          explanation={guidedDemoActive ? secondIssue?.label ?? "Confirm the full legal name matches the bank record before submission." : `Add your copy of current enrolment proof so ${institution.name} can complete verification without returning the application.`}
+          why={guidedDemoActive ? secondIssue?.suggestion ?? "Use the same legal name everywhere." : `Your upload is the part you control. ${institution.name} still owns the scholarship verification action after submission.`}
           actor="You"
           cta={guidedDemoActive ? "Confirm name" : "Add document"}
           icon={<FileUp size={18} />}

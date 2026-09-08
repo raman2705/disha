@@ -17,6 +17,7 @@ const icons = {
 export default function ApplicationsPage() {
   const { language, demoState, guidedDemoActive, normalAssessment } = useAppState();
   const t = translations[language];
+  const normalResult = normalAssessment.assessmentResult;
   const canonicalApplication = getCanonicalApplicationForDemoState(demoState, canonicalGuidedDemoOpportunityId);
   const orderedApplications = [
     canonicalApplication,
@@ -31,15 +32,15 @@ export default function ApplicationsPage() {
         </PageHeader>
         <section className="mx-auto max-w-2xl rounded-lg bg-white p-7 shadow-sm ring-1 ring-stone-200">
           <h2 className="font-serif text-3xl font-bold text-ink">
-            {normalAssessment.generated ? "Your first assessment is ready." : "Assess an opportunity first."}
+            {normalResult ? `${normalResult.recommendationLabel}: ${normalResult.opportunityName}` : "Assess an opportunity first."}
           </h2>
           <p className="mt-3 text-sm leading-6 text-muted">
-            {normalAssessment.generated
-              ? "You can ask Disha what to improve, then come back here after an application is submitted."
+            {normalResult
+              ? normalResult.nextAction
               : "This keeps normal mode clean. The guided sample journey appears only when you choose Try the demo."}
           </p>
           <Link href="/assess" className="mt-6 inline-flex min-h-11 items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-bold text-white">
-            {normalAssessment.generated ? "Open assessment" : "Start assessment"}
+            {normalResult ? "Open assessment" : "Start assessment"}
             <ArrowRight size={16} />
           </Link>
         </section>

@@ -29,6 +29,7 @@ const copy: Record<Stage, { body: string; href: string }> = {
 
 export default function MyPathPage() {
   const { demoState, guidedDemoActive, normalAssessment } = useAppState();
+  const normalResult = normalAssessment.assessmentResult;
   const activeStage = stageForDemoState(demoState);
   const activeIndex = journey.indexOf(activeStage);
   const canonicalApplication = getCanonicalApplicationForDemoState(demoState);
@@ -42,13 +43,13 @@ export default function MyPathPage() {
           Disha will build a journey once you choose an opportunity and add a few evidence items.
         </PageHeader>
         <section className="rounded-lg bg-white p-7 shadow-sm ring-1 ring-stone-200">
-          <StatusBadge tone={normalAssessment.generated ? "active" : "neutral"}>{normalAssessment.generated ? "Assessment started" : "Not started"}</StatusBadge>
+          <StatusBadge tone={normalResult ? "active" : "neutral"}>{normalResult ? "Assessment complete" : "Not started"}</StatusBadge>
           <h2 className="mt-4 font-serif text-3xl font-bold text-ink">
-            {normalAssessment.generated ? "You have a draft assessment." : "No demo journey is loaded."}
+            {normalResult ? `${normalResult.recommendationLabel}: ${normalResult.opportunityName}` : "No demo journey is loaded."}
           </h2>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-muted">
-            {normalAssessment.generated
-              ? "Ask Disha what to improve next, then move toward application tracking when you submit."
+            {normalResult
+              ? normalResult.nextAction
               : "Use normal mode for your own inputs, or choose Try the demo from the homepage to see the complete sample journey."}
           </p>
           <Link href="/assess" className="mt-6 inline-flex min-h-11 items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-bold text-white">

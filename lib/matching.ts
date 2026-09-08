@@ -166,7 +166,7 @@ export function sampleEligibilityProfile(): MatchProfile {
   };
 }
 
-export function sortMatches(results: MatchResult[], sort: "Best fit" | "Deadline" | "Amount") {
+export function sortMatches(results: MatchResult[], sort: "Eligibility" | "Deadline" | "Amount") {
   const order = { recommended: 0, could: 1, ineligible: 2 } as const;
   const ranked = [...results].sort((a, b) => order[a.state] - order[b.state]);
 

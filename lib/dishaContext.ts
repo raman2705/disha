@@ -13,7 +13,7 @@ import {
   type Stage
 } from "@/lib/data";
 import { buildOpportunityAssessmentResult, getOpportunity, sampleAssessmentResponses, type AssessmentResult, type Opportunity } from "@/lib/opportunities";
-import type { NormalAssessmentDraft } from "@/components/AppContext";
+import { buildNormalApplicant, type NormalAssessmentDraft } from "@/lib/normalAssessment";
 
 export type DishaContext = {
   mode: "normal" | "demo";
@@ -48,20 +48,23 @@ export function buildDishaContext({
   guidedDemoActive?: boolean;
   normalAssessment?: NormalAssessmentDraft;
 } = {}): DishaContext {
+  const normalAssessmentResult = normalAssessment?.generated ? normalAssessment.assessmentResult : null;
   const resolvedOpportunityId = guidedDemoActive
     ? opportunityId ?? opportunityIdFromPathname(pathname) ?? canonicalGuidedDemoOpportunityId
-    : normalAssessment?.opportunityId ?? opportunityIdFromPathname(pathname) ?? canonicalGuidedDemoOpportunityId;
-  const activeOpportunity = getOpportunity(resolvedOpportunityId) ?? getOpportunity(canonicalGuidedDemoOpportunityId) ?? null;
-  const stage = guidedDemoActive ? stageFromPathname(pathname, demoState) : normalAssessment?.generated ? "Assess" : "Discover";
+    : normalAssessmentResult?.opportunityId ?? opportunityIdFromPathname(pathname);
+  const activeOpportunity = resolvedOpportunityId
+    ? getOpportunity(resolvedOpportunityId) ?? (guidedDemoActive ? getOpportunity(canonicalGuidedDemoOpportunityId) ?? null : null)
+    : null;
+  const stage = guidedDemoActive ? stageFromPathname(pathname, demoState) : normalAssessmentResult ? "Assess" : "Discover";
   const state = guidedDemoActive ? stateForStage(stage, demoState) : "assess";
   const canonicalApplication = getCanonicalApplicationForDemoState(state, activeOpportunity?.id ?? canonicalGuidedDemoOpportunityId);
   const snapshotId = snapshotForState(state);
   const ownership = getApplicationOwnership(canonicalApplication, snapshotId);
   const preSubmission = state === "discover" || state === "assess" || state === "prepare" || state === "apply";
-  const currentProfile = guidedDemoActive ? profile : buildNormalProfile(normalAssessment);
+  const currentProfile = guidedDemoActive ? profile : buildNormalApplicant(normalAssessment);
   const evidencePassport = guidedDemoActive ? ananyaEvidencePassport : buildNormalEvidencePassport(normalAssessment, currentProfile);
-  const responses = activeOpportunity ? guidedDemoActive ? sampleAssessmentResponses[activeOpportunity.id] ?? {} : normalResponses(normalAssessment) : {};
-  const assessmentResult = activeOpportunity ? buildOpportunityAssessmentResult(activeOpportunity, responses, currentProfile) : null;
+  const responses = activeOpportunity && guidedDemoActive ? sampleAssessmentResponses[activeOpportunity.id] ?? {} : {};
+  const assessmentResult = guidedDemoActive && activeOpportunity ? buildOpportunityAssessmentResult(activeOpportunity, responses, currentProfile) : normalAssessmentResult;
 
   return {
     mode: guidedDemoActive ? "demo" : "normal",
@@ -72,11 +75,11 @@ export function buildDishaContext({
     journeyStage: stage,
     demoState: state,
     canonicalApplication,
-    currentOwner: guidedDemoActive ? preSubmission ? canonicalApplication.owner : ownership.currentOwner : normalAssessment?.generated ? "You" : "Disha",
+    currentOwner: guidedDemoActive ? preSubmission ? canonicalApplication.owner : ownership.currentOwner : normalAssessmentResult ? "You" : "Disha",
     ownership,
     blocker: ownership.blockerReason ?? null,
-    requiredAction: guidedDemoActive ? preSubmission ? canonicalApplication.nextStep : ownership.applicantAction : normalAssessment?.generated ? "Review the assessment and decide what to improve first." : "Enter a few details to generate your first assessment.",
-    nextStep: guidedDemoActive ? canonicalApplication.nextStep : normalAssessment?.generated ? "Ask Disha what to improve first." : "Start a lightweight assessment.",
+    requiredAction: guidedDemoActive ? preSubmission ? canonicalApplication.nextStep : ownership.applicantAction : normalAssessmentResult?.nextAction ?? "Enter a few details to generate your first assessment.",
+    nextStep: guidedDemoActive ? canonicalApplication.nextStep : normalAssessmentResult?.nextAction ?? "Start a lightweight assessment.",
     documents: guidedDemoActive ? canonicalApplication.documents : evidencePassport.records.map((record) => record.label),
     paymentState: guidedDemoActive && state === "payment-corrected" ? "revalidating" : guidedDemoActive && (state === "payment" || state === "payment-blocker") ? "blocked" : "not-started",
     renewalState: guidedDemoActive && state === "renewal" ? "active" : "not-active",
@@ -101,36 +104,6 @@ export function assistantStarters(context: DishaContext) {
     return ["Do I need to start again?", "What can I reuse?", "What needs to be updated?"];
   }
   return ["What should I do next?", "Which opportunity fits best?", "What evidence does Disha already have?"];
-}
-
-function buildNormalProfile(draft?: NormalAssessmentDraft): DemoProfile {
-  const name = draft?.name?.trim() || "you";
-  const institution = draft?.institution?.trim() || "your institution";
-  const programme = draft?.programme?.trim() || "your programme";
-  const income = draft?.income?.trim() || "not provided";
-  const gender = draft?.gender?.trim() || "not provided";
-
-  return {
-    ...profile,
-    id: "normal-visitor",
-    name,
-    initials: name === "you" ? "YO" : name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase(),
-    role: programme,
-    college: institution,
-    institutionType: institution.toLowerCase().includes("aicte") ? "AICTE-approved" : "Not confirmed",
-    location: "",
-    programme,
-    course: programme,
-    year: "",
-    cgpa: draft?.evidence.academic ? "Academic record added" : "Academic record not added",
-    income,
-    gender,
-    bank: draft?.evidence.bank ? "Added" : "Not added",
-    aadhaar: draft?.evidence.identity ? "Added" : "Not added",
-    strengths: draft?.generated ? ["Some profile evidence has been added"] : [],
-    gaps: draft?.generated ? ["Disha needs more evidence to be confident"] : [],
-    evidence: []
-  };
 }
 
 function buildNormalEvidencePassport(draft: NormalAssessmentDraft | undefined, currentProfile: DemoProfile) {
@@ -184,15 +157,6 @@ function buildNormalEvidencePassport(draft: NormalAssessmentDraft | undefined, c
         note: evidence?.bank ? "Bank details are available for readiness checks." : "Bank details can be added later, before submission."
       }
     ]
-  };
-}
-
-function normalResponses(draft?: NormalAssessmentDraft): Record<string, string> {
-  if (!draft?.generated) return {};
-  return {
-    eligibilityProof: draft.evidence.identity && draft.gender ? "Eligible but one document pending" : "Eligibility unclear",
-    academicEvidence: draft.evidence.academic ? "Academic record visible but enrolment proof pending" : "Academic record unclear",
-    readinessProof: draft.evidence.income && draft.evidence.bank ? "Records aligned" : "One correction needed"
   };
 }
 

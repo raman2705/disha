@@ -7,6 +7,7 @@ import { ArrowRight, Mic, MicOff, Send, Sparkles, Volume2, X } from "lucide-reac
 import { useAppState } from "@/components/AppContext";
 import { answerFromDishaContext, type AssistantResponse } from "@/lib/assistant";
 import { assistantStarters, buildDishaContext, type DishaContext } from "@/lib/dishaContext";
+import { finalizeNormalAssessment } from "@/lib/normalAssessment";
 
 type SpeechRecognitionLike = {
   continuous: boolean;
@@ -26,9 +27,9 @@ type Message = {
 
 export function DishaAssistantDrawer() {
   const pathname = usePathname();
-  const { assistantOpen, setAssistantOpen, demoState, guidedDemoOpportunityId, guidedDemoActive, normalAssessment } = useAppState();
+  const { assistantOpen, setAssistantOpen, demoState, guidedDemoOpportunityId, guidedDemoActive, normalAssessment, setNormalAssessment } = useAppState();
   const context = useMemo(
-    () => buildDishaContext({ pathname, opportunityId: guidedDemoOpportunityId, demoState, guidedDemoActive, normalAssessment }),
+    () => buildDishaContext({ pathname, opportunityId: guidedDemoActive ? guidedDemoOpportunityId : undefined, demoState, guidedDemoActive, normalAssessment }),
     [pathname, guidedDemoOpportunityId, demoState, guidedDemoActive, normalAssessment]
   );
   const starters = useMemo(() => assistantStarters(context), [context]);
@@ -94,9 +95,11 @@ export function DishaAssistantDrawer() {
       if (!response.ok) throw new Error("Assistant API failed");
       const payload = (await response.json()) as AssistantResponse;
       setMessages((current) => [...current, { role: "assistant", text: payload.answer, response: payload }]);
+      applyStructuredFactUpdate(clean);
     } catch {
       const payload = answerFromDishaContext(clean, context);
       setMessages((current) => [...current, { role: "assistant", text: payload.answer, response: payload }]);
+      applyStructuredFactUpdate(clean);
     }
   };
 
@@ -122,6 +125,39 @@ export function DishaAssistantDrawer() {
     if (!latest || !("speechSynthesis" in window)) return;
     window.speechSynthesis.cancel();
     window.speechSynthesis.speak(new SpeechSynthesisUtterance(latest));
+  };
+
+  const applyStructuredFactUpdate = (message: string) => {
+    if (guidedDemoActive || !normalAssessment.generated || !normalAssessment.assessmentResult || !context.activeOpportunity) return;
+    const text = message.toLowerCase();
+    const mentionsLeadership = /\b(led|lead|leadership|team|volunteer|organised|organized)\b/.test(text);
+    if (!mentionsLeadership || normalAssessment.leadership === "led significant teams/programs") return;
+
+    const previous = normalAssessment.assessmentResult;
+    const largestTeam = text.match(/\b([2-9]|[1-9][0-9])\b/);
+    const nextDraft = finalizeNormalAssessment(
+      {
+        ...normalAssessment,
+        leadership: largestTeam && Number(largestTeam[1]) > 10 ? "led significant teams/programs" : "led a small project/team",
+        largestTeam: largestTeam && Number(largestTeam[1]) > 25 ? "25+" : largestTeam && Number(largestTeam[1]) > 10 ? "11-25" : largestTeam && Number(largestTeam[1]) > 5 ? "6-10" : "1-5",
+        leadershipDuration: text.includes("year") ? "1+ year" : text.includes("month") ? "3-12 months" : "one-off",
+        ownership: largestTeam && Number(largestTeam[1]) > 10 ? "led multiple projects/team" : "owned a project/workstream"
+      },
+      context.activeOpportunity
+    );
+
+    setNormalAssessment(nextDraft);
+    const next = nextDraft.assessmentResult;
+    if (!next) return;
+    const previousFit = previous.competitiveness.score ?? "not scored";
+    const nextFit = next.competitiveness.score ?? "not scored";
+    setMessages((current) => [
+      ...current,
+      {
+        role: "assistant",
+        text: `Assessment updated. Leadership facts were saved, and competitive fit moved from ${previousFit} to ${nextFit}. Recommendation is now ${next.recommendationLabel}.`
+      }
+    ]);
   };
 
   return (
@@ -215,8 +251,8 @@ function greetingForContext(context: DishaContext) {
   const name = context.profile.name === "you" ? "there" : context.profile.name.split(" ")[0];
   const opportunity = context.activeOpportunity?.name ?? "this opportunity";
 
-  if (context.mode === "normal" && !context.assessmentResult?.evidenceBasis.length) {
-    return `Hi ${name}. Add a few details and I can help you judge whether an opportunity is worth your time.`;
+  if (context.mode === "normal" && !context.assessmentResult) {
+    return "Hi 👋 I can help you assess an opportunity, understand what evidence matters, or figure out what to improve. What are you working on?";
   }
 
   if (context.journeyStage === "Assess") {

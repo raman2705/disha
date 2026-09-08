@@ -10,12 +10,12 @@ import { scholarships, ScholarshipLevel } from "@/lib/data";
 import { evaluateScholarships, sampleEligibilityProfile, sortMatches } from "@/lib/matching";
 
 const primaryFilters = ["All", "School", "Diploma", "Undergraduate", "Postgraduate", "Research"] as const;
-const sortOptions = ["Best fit", "Deadline", "Amount"] as const;
+const sortOptions = ["Eligibility", "Deadline", "Amount"] as const;
 
 export default function ScholarshipsPage() {
   const [query, setQuery] = useState("");
   const [level, setLevel] = useState<(typeof primaryFilters)[number]>("All");
-  const [sort, setSort] = useState<(typeof sortOptions)[number]>("Best fit");
+  const [sort, setSort] = useState<(typeof sortOptions)[number]>("Eligibility");
   const [personalised, setPersonalised] = useState(false);
   const [moreFiltersOpen, setMoreFiltersOpen] = useState(false);
   const [moreFilters, setMoreFilters] = useState({
@@ -259,7 +259,7 @@ function scoreFilterAllows(value: string, minimum: number) {
   return rank[value] >= minimum;
 }
 
-function sortScholarshipList(items: typeof scholarships, sort: "Best fit" | "Deadline" | "Amount") {
+function sortScholarshipList(items: typeof scholarships, sort: "Eligibility" | "Deadline" | "Amount") {
   if (sort === "Deadline") {
     return [...items].sort((a, b) => deadlineRank(a.deadline) - deadlineRank(b.deadline));
   }

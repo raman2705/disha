@@ -3,22 +3,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { canonicalGuidedDemoOpportunityId, DemoState, normalizeDemoState, primaryProfileId } from "@/lib/data";
 import { Language } from "@/lib/i18n";
-
-export type NormalAssessmentDraft = {
-  name: string;
-  institution: string;
-  programme: string;
-  income: string;
-  gender: string;
-  opportunityId: string;
-  evidence: {
-    academic: boolean;
-    income: boolean;
-    bank: boolean;
-    identity: boolean;
-  };
-  generated: boolean;
-};
+import { defaultNormalAssessment, type NormalAssessmentDraft } from "@/lib/normalAssessment";
+export type { NormalAssessmentDraft } from "@/lib/normalAssessment";
 
 type AppContextValue = {
   demoState: DemoState;
@@ -40,22 +26,6 @@ type AppContextValue = {
 
 const AppContext = createContext<AppContextValue | null>(null);
 
-const defaultNormalAssessment: NormalAssessmentDraft = {
-  name: "",
-  institution: "",
-  programme: "",
-  income: "",
-  gender: "",
-  opportunityId: canonicalGuidedDemoOpportunityId,
-  evidence: {
-    academic: true,
-    income: false,
-    bank: false,
-    identity: true
-  },
-  generated: false
-};
-
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [demoState, setDemoStateValue] = useState<DemoState>("assess");
   const [assistantOpen, setAssistantOpen] = useState(false);
@@ -73,7 +43,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const savedNormalAssessment = window.localStorage.getItem("disha-normal-assessment");
     if (savedNormalAssessment) {
       try {
-        setNormalAssessmentValue({ ...defaultNormalAssessment, ...(JSON.parse(savedNormalAssessment) as NormalAssessmentDraft) });
+        const parsed = JSON.parse(savedNormalAssessment) as Partial<NormalAssessmentDraft>;
+        setNormalAssessmentValue({
+          ...defaultNormalAssessment,
+          ...parsed,
+          evidence: { ...defaultNormalAssessment.evidence, ...parsed.evidence },
+          generated: Boolean(parsed.generated && parsed.assessmentResult),
+          assessmentResult: parsed.assessmentResult ?? null
+        });
       } catch {
         window.localStorage.removeItem("disha-normal-assessment");
       }

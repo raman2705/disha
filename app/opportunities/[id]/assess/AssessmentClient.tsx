@@ -5,7 +5,8 @@ import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, ArrowRight, CheckCircle2, FileSearch, RefreshCw, Sparkles, TriangleAlert } from "lucide-react";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useAppState } from "@/components/AppContext";
-import { ananyaEvidencePassport, getGuidedDemoApplication, profile, type DemoProfile } from "@/lib/data";
+import { ananyaEvidencePassport, getGuidedDemoApplication, profile } from "@/lib/data";
+import { buildNormalApplicant } from "@/lib/normalAssessment";
 import { Language, languageLabels, translations } from "@/lib/i18n";
 import {
   buildOpportunityAssessmentResult,
@@ -22,7 +23,21 @@ const statusTone = {
   Strong: "success",
   Moderate: "active",
   Weak: "warning",
-  Missing: "neutral"
+  Missing: "neutral",
+  eligible: "success",
+  ineligible: "danger",
+  uncertain: "warning",
+  strong: "success",
+  competitive: "active",
+  developing: "warning",
+  weak: "warning",
+  unknown: "neutral",
+  high: "success",
+  medium: "active",
+  low: "warning",
+  credible: "active",
+  claim_only: "warning",
+  none: "neutral"
 } as const;
 
 export default function AssessmentClient({ opportunity, initialAsk: _initialAsk }: { opportunity: Opportunity; initialAsk: string }) {
@@ -36,7 +51,12 @@ export default function AssessmentClient({ opportunity, initialAsk: _initialAsk 
   const trackerHref = guidedDemoActive ? guidedApplication?.href ?? "/applications" : "/applications";
   const [responses, setResponses] = useState<Record<string, string>>({});
   const applicant = useMemo(() => guidedDemoActive ? profile : buildNormalApplicant(normalAssessment), [guidedDemoActive, normalAssessment]);
-  const assessmentResult = useMemo(() => buildOpportunityAssessmentResult(opportunity, responses, applicant), [applicant, opportunity, responses]);
+  const assessmentResult = useMemo(() => {
+    if (!guidedDemoActive && normalAssessment.assessmentResult?.opportunityId === opportunity.id) {
+      return normalAssessment.assessmentResult;
+    }
+    return buildOpportunityAssessmentResult(opportunity, responses, applicant);
+  }, [applicant, guidedDemoActive, normalAssessment.assessmentResult, opportunity, responses]);
   const isCanonicalPragati = opportunity.id === "aicte-pragati-scholarship";
   const isDemoPragati = guidedDemoActive && isCanonicalPragati;
   const applicantLabel = guidedDemoActive ? "Ananya" : normalAssessment.name || "your profile";
@@ -92,8 +112,8 @@ export default function AssessmentClient({ opportunity, initialAsk: _initialAsk 
               : "Disha generated this from your current evidence answers and the programme requirements."}
           </p>
           <div className="mt-4 flex flex-wrap items-center gap-2">
-            <StatusBadge tone="active">{assessmentResult.recommendation}</StatusBadge>
-            <span className="text-sm font-semibold text-muted">Confidence: {assessmentResult.confidence}</span>
+            <StatusBadge tone="active">{assessmentResult.recommendationLabel}</StatusBadge>
+            <span className="text-sm font-semibold text-muted">Confidence: {sentenceCase(assessmentResult.confidence.level)}</span>
           </div>
           <div className="mt-5 flex flex-wrap gap-3">
             <button type="button" onClick={openAssistant} className="inline-flex min-h-11 items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700">
@@ -121,13 +141,13 @@ export default function AssessmentClient({ opportunity, initialAsk: _initialAsk 
             {decisionHeading}
           </h2>
           <p className="mt-3 text-sm leading-6 text-slate-700">
-            This is a requirements-heavy assessment. Disha is not inventing competitive odds; it is checking whether {applicantLabel} can support eligibility and submission readiness with evidence.
+            This separates formal eligibility from competitive evidence. Disha only shows a fit score when enough criterion weight has usable evidence.
           </p>
           <div className="mt-5 grid gap-3">
             {assessmentResult.gaps.slice(0, 2).map((gap) => (
-              <div key={gap.criterionId} className="rounded-md bg-[#FFF3DD] p-3 ring-1 ring-amber-100">
-                <p className="text-sm font-bold text-ink">{gap.criterion}</p>
-                <p className="mt-1 text-sm leading-6 text-slate-700">{gap.action}</p>
+              <div key={gap.label} className="rounded-md bg-[#FFF3DD] p-3 ring-1 ring-amber-100">
+                <p className="text-sm font-bold text-ink">{gap.label}</p>
+                <p className="mt-1 text-sm leading-6 text-slate-700">{gap.suggestion}</p>
               </div>
             ))}
           </div>
@@ -139,16 +159,16 @@ export default function AssessmentClient({ opportunity, initialAsk: _initialAsk 
       </section>
 
       <section className="mb-7 grid gap-4 md:grid-cols-4">
-        <AssessmentSummaryCard title={t.assessment.eligibility} status={assessmentResult.eligibility.status} body={assessmentResult.eligibility.summary} />
-        <AssessmentSummaryCard title="Fit" status={assessmentResult.fit.status} body={assessmentResult.fit.summary} />
-        <AssessmentSummaryCard title={t.assessment.readiness} status={assessmentResult.readiness.status} body={assessmentResult.readiness.summary} />
+        <AssessmentSummaryCard title={t.assessment.eligibility} status={assessmentResult.eligibility.status} body={eligibilitySummary(assessmentResult)} />
+        <AssessmentSummaryCard title="Competitive fit" status={assessmentResult.competitiveness.band} body={competitiveFitSummary(assessmentResult)} />
+        <AssessmentSummaryCard title="Confidence" status={assessmentResult.confidence.level} body={assessmentResult.confidence.explanation} />
         <article className="rounded-lg bg-white p-5 shadow-sm ring-1 ring-stone-200">
           <div className="flex items-start justify-between gap-3">
-            <h2 className="font-serif text-xl font-bold text-ink">Effort vs upside</h2>
+            <h2 className="font-serif text-xl font-bold text-ink">Recommendation</h2>
             <StatusBadge tone={assessmentResult.effortVsUpside.effort === "High" ? "warning" : "active"}>{assessmentResult.effortVsUpside.effort}</StatusBadge>
           </div>
-          <p className="mt-3 text-lg font-black text-ink">{assessmentResult.effortVsUpside.upside}</p>
-          <p className="mt-2 text-sm leading-6 text-muted">{assessmentResult.effortVsUpside.rationale}</p>
+          <p className="mt-3 text-lg font-black text-ink">{assessmentResult.recommendationLabel}</p>
+          <p className="mt-2 text-sm leading-6 text-muted">{assessmentResult.recommendation.explanation}</p>
         </article>
       </section>
 
@@ -188,10 +208,10 @@ export default function AssessmentClient({ opportunity, initialAsk: _initialAsk 
             <TriangleAlert className="mt-1 text-amber-800" size={22} />
             <div>
               <h2 className="font-serif text-2xl font-bold text-ink">Biggest risk</h2>
-              <p className="mt-3 text-lg font-black text-ink">{assessmentResult.gaps[0]?.criterion ?? "No major gap captured"}</p>
-              <p className="mt-2 text-sm leading-6 text-slate-700">{assessmentResult.gaps[0]?.whyItMatters ?? "Evidence looks strong across visible criteria."}</p>
+              <p className="mt-3 text-lg font-black text-ink">{assessmentResult.gaps[0]?.label ?? "No major gap captured"}</p>
+              <p className="mt-2 text-sm leading-6 text-slate-700">{assessmentResult.gaps[0]?.severity === "critical" ? "This is a formal eligibility blocker." : "This could materially affect the current recommendation."}</p>
               <p className="mt-4 rounded-md bg-white/70 p-3 text-sm font-semibold leading-6 text-slate-700">
-                {assessmentResult.gaps[0]?.action ?? "Keep documents current."}
+                {assessmentResult.gaps[0]?.suggestion ?? "Keep documents current."}
               </p>
             </div>
           </div>
@@ -207,34 +227,34 @@ export default function AssessmentClient({ opportunity, initialAsk: _initialAsk 
             <h2 className="font-serif text-3xl font-bold text-ink">{t.assessment.evaluatorLens}</h2>
             <p className="mt-2 text-sm leading-6 text-muted">See how your current evidence maps to what this opportunity evaluates.</p>
           </div>
-          <StatusBadge tone="active">{assessmentResult.evaluatorLens.length ? `${assessmentResult.evaluatorLens.length} requirement signals mapped` : "Assessment unavailable"}</StatusBadge>
+          <StatusBadge tone="active">{assessmentResult.competitiveness.criteria.length ? `${assessmentResult.competitiveness.criteria.length} selection criteria mapped` : "Assessment unavailable"}</StatusBadge>
         </div>
 
         <div className="mt-6 grid gap-4 lg:grid-cols-2">
-          {assessmentResult.evaluatorLens.length ? assessmentResult.evaluatorLens.map((criterion) => (
-            <article key={criterion.criterionId} className="rounded-lg bg-[#FBF7F1] p-5 ring-1 ring-stone-200">
+          {assessmentResult.competitiveness.criteria.length ? assessmentResult.competitiveness.criteria.map((criterion) => (
+            <article key={criterion.id} className="rounded-lg bg-[#FBF7F1] p-5 ring-1 ring-stone-200">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <h3 className="font-serif text-xl font-bold text-ink">{criterion.criterion}</h3>
-                  <p className="mt-1 text-sm leading-6 text-muted">Importance: {criterion.apparentImportance} · Source: {criterion.evidenceSource}</p>
+                  <h3 className="font-serif text-xl font-bold text-ink">{criterion.label}</h3>
+                  <p className="mt-1 text-sm leading-6 text-muted">Importance: {sentenceCase(criterion.importance)} · Weight: {criterion.weight}%</p>
                 </div>
-                <StatusBadge tone={statusTone[criterion.evidenceStrength]}>{t.assessment[criterion.evidenceStrength.toLowerCase() as "strong" | "moderate" | "weak" | "missing"]}</StatusBadge>
+                <StatusBadge tone={statusTone[criterion.evidenceStrength]}>{sentenceCase(criterion.evidenceStrength)}</StatusBadge>
               </div>
               <dl className="mt-4 space-y-3 text-sm">
                 <div>
-                  <dt className="font-bold text-ink">Programme looks for</dt>
-                  <dd className="mt-1 leading-6 text-slate-700">{criterion.evidenceBasis}</dd>
+                  <dt className="font-bold text-ink">Source basis</dt>
+                  <dd className="mt-1 leading-6 text-slate-700">{sentenceCase(criterion.basis)}{criterion.source ? ` · ${criterion.source}` : ""}</dd>
                 </div>
                 <div>
                   <dt className="font-bold text-ink">{guidedDemoActive ? "Ananya's evidence" : "Your evidence"}</dt>
-                  <dd className="mt-1 leading-6 text-slate-700">{criterion.userEvidence}</dd>
+                  <dd className="mt-1 leading-6 text-slate-700">{criterion.evidenceFromProfile?.join("; ") || "No profile evidence captured yet."}</dd>
                 </div>
                 <div>
-                  <dt className="font-bold text-ink">{criterion.evidenceStrength === "Strong" ? "Finding" : t.assessment.gap}</dt>
-                  <dd className="mt-1 leading-6 text-slate-700">{criterion.gap}</dd>
+                  <dt className="font-bold text-ink">{criterion.evidenceScore !== null && criterion.evidenceScore >= 3 ? "Finding" : t.assessment.gap}</dt>
+                  <dd className="mt-1 leading-6 text-slate-700">{criterion.explanation}</dd>
                 </div>
                 <div className="flex flex-wrap gap-2 pt-1 text-xs font-bold text-muted">
-                  <span>Confidence: {criterion.confidence}</span>
+                  <span>Evidence score: {criterion.evidenceScore ?? "Unknown"}</span>
                 </div>
               </dl>
             </article>
@@ -342,44 +362,16 @@ export default function AssessmentClient({ opportunity, initialAsk: _initialAsk 
   );
 }
 
-function buildNormalApplicant(draft: ReturnType<typeof useAppState>["normalAssessment"]): DemoProfile {
-  const name = draft.name || "Your profile";
-  const initials = name
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase())
-    .join("") || "YO";
-
-  return {
-    ...profile,
-    id: "normal-profile",
-    name,
-    initials,
-    role: draft.programme || "Applicant",
-    college: draft.institution || "Institution not added",
-    programme: draft.programme || "Programme not added",
-    course: draft.programme || "Programme not added",
-    income: draft.income || "Income not added",
-    gender: draft.gender || "Not specified",
-    evidence: [
-      draft.evidence.identity ? { id: "identity", label: "Identity details", summary: "Identity details confirmed", source: "self-reported" as const } : null,
-      draft.evidence.academic ? { id: "academic", label: "Academic or role proof", summary: "Academic or role proof available", source: "self-reported" as const } : null,
-      draft.evidence.income ? { id: "income", label: "Income proof", summary: "Income proof available", source: "self-reported" as const } : null,
-      draft.evidence.bank ? { id: "bank", label: "Bank details", summary: "Bank details available", source: "self-reported" as const } : null
-    ].filter(Boolean) as DemoProfile["evidence"]
-  };
-}
-
 function decisionHeadline(assessment: ReturnType<typeof buildOpportunityAssessmentResult>) {
-  if (assessment.eligibility.status === "Fail") return "Check eligibility before spending more time.";
-  if (assessment.readiness.status === "Weak" || assessment.readiness.status === "Missing") return "Add evidence before deciding to apply.";
-  if (assessment.recommendation === "Low priority") return "Not enough evidence to prioritize yet.";
-  if (assessment.readiness.status === "Moderate") return "Worth checking. Fix the readiness gaps first.";
+  if (assessment.eligibility.status === "ineligible") return "Check eligibility before spending more time.";
+  if (assessment.eligibility.status === "uncertain") return "Verify eligibility before investing effort.";
+  if (assessment.competitiveness.score === null) return "Add evidence before deciding to apply.";
+  if (assessment.recommendation.verdict === "low_priority") return "Not enough evidence to prioritize yet.";
+  if (assessment.competitiveness.band === "developing") return "Worth checking after evidence improves.";
   return "Strong enough to prepare with confidence.";
 }
 
-function AssessmentSummaryCard({ title, status, body }: { title: string; status: "Pass" | "Fail" | "Unknown" | "Strong" | "Moderate" | "Weak" | "Missing"; body: string }) {
+function AssessmentSummaryCard({ title, status, body }: { title: string; status: keyof typeof statusTone; body: string }) {
   return (
     <article className="rounded-lg bg-white p-5 shadow-sm ring-1 ring-stone-200">
       <div className="flex items-start justify-between gap-3">
@@ -389,4 +381,22 @@ function AssessmentSummaryCard({ title, status, body }: { title: string; status:
       <p className="mt-3 text-sm leading-6 text-muted">{body}</p>
     </article>
   );
+}
+
+function eligibilitySummary(assessment: ReturnType<typeof buildOpportunityAssessmentResult>) {
+  if (assessment.eligibility.status === "ineligible") return `Hard blocker: ${assessment.eligibility.blockers.join(", ")}.`;
+  const passCount = assessment.eligibility.conditions.filter((condition) => condition.result === "pass").length;
+  const unknownCount = assessment.eligibility.conditions.filter((condition) => condition.result === "unknown").length;
+  if (unknownCount) return `You meet ${passCount} requirements; ${unknownCount} still need verification.`;
+  return `You meet ${passCount} of ${assessment.eligibility.conditions.length} verified requirements.`;
+}
+
+function competitiveFitSummary(assessment: ReturnType<typeof buildOpportunityAssessmentResult>) {
+  if (assessment.eligibility.status === "ineligible") return "Not assessed because formal eligibility failed.";
+  if (assessment.competitiveness.score === null) return `No numeric score shown. Usable evidence covers ${assessment.competitiveness.assessedWeightPercent}% of known selection weight.`;
+  return `${sentenceCase(assessment.competitiveness.band)}: ${assessment.competitiveness.score}/100, based on ${assessment.competitiveness.assessedWeightPercent}% of known selection weight.`;
+}
+
+function sentenceCase(value: string) {
+  return value.charAt(0).toUpperCase() + value.slice(1).replace(/_/g, " ");
 }
