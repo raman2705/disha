@@ -51,9 +51,87 @@ select {
   }
 }
 
+/*
+ * Landing motion.
+ *
+ * Every rule below lives inside prefers-reduced-motion:no-preference and only ever animates *into*
+ * the element's resting state, which is what the stylesheet already renders. With motion off, or
+ * with CSS animation unsupported, the landing page is already in its finished position.
+ */
 @media (prefers-reduced-motion: no-preference) {
   .state-pop {
     animation: state-pop 420ms ease-out;
+  }
+
+  /* The compass needle swings past north once and settles, the way a real needle does. */
+  .disha-needle {
+    animation: disha-needle-settle 1150ms cubic-bezier(0.22, 0.68, 0.31, 1) both;
+    transform-box: fill-box;
+    transform-origin: 50% 50%;
+  }
+
+  @keyframes disha-needle-settle {
+    0% {
+      transform: rotate(-26deg);
+    }
+    55% {
+      transform: rotate(5deg);
+    }
+    78% {
+      transform: rotate(-1.5deg);
+    }
+    100% {
+      transform: rotate(0deg);
+    }
+  }
+
+  /* The path connecting Discover, Assess and Apply draws itself left to right. */
+  .journey-rail {
+    animation: journey-rail-draw 700ms 620ms ease-out both;
+  }
+
+  @keyframes journey-rail-draw {
+    from {
+      transform: scaleX(0);
+    }
+    to {
+      transform: scaleX(1);
+    }
+  }
+
+  .landing-rise {
+    animation: landing-rise 620ms ease-out both;
+  }
+
+  .landing-rise-1 {
+    animation-delay: 70ms;
+  }
+
+  .landing-rise-2 {
+    animation-delay: 140ms;
+  }
+
+  .landing-rise-3 {
+    animation-delay: 210ms;
+  }
+
+  .landing-rise-4 {
+    animation-delay: 280ms;
+  }
+
+  .landing-rise-5 {
+    animation-delay: 350ms;
+  }
+
+  @keyframes landing-rise {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
 
   @keyframes state-pop {

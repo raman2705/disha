@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import clsx from "clsx";
 import { Bell, CheckCircle2, ChevronDown, ChevronUp, FileText, Map, Search, Sparkles, UserRound } from "lucide-react";
+import { DishaWordmark } from "@/components/DishaMark";
 import { useAppState } from "@/components/AppContext";
 import {
   brand,
@@ -45,6 +46,13 @@ export function Navigation() {
   const guidedApplication = getGuidedDemoApplication(guidedDemoOpportunityId);
   const guidedPayment = getGuidedDemoPaymentApplication(guidedDemoOpportunityId);
   const guidedRenewal = getGuidedDemoRenewalApplication(guidedDemoOpportunityId);
+
+  // The landing page gets a deliberately quiet header so the hero dominates. The guided demo keeps
+  // the full header wherever it runs, so its step strip and exit control are never stranded.
+  if (pathname === "/" && !guidedDemoActive) {
+    return <LandingHeader />;
+  }
+
   const demoSteps = buildDemoSteps(
     guidedApplication?.opportunityId ?? canonicalGuidedDemoOpportunityId,
     guidedApplication?.id ?? "pragati-readiness-2026",
@@ -213,6 +221,45 @@ export function Navigation() {
           }}
         />
       ) : null}
+    </header>
+  );
+}
+
+const landingNav = [
+  { href: "/opportunities", label: "Explore" },
+  { href: "/assess", label: "Assess" },
+  { href: "/#how-it-works", label: "How it works" },
+  { href: "/#about", label: "About Disha" }
+];
+
+function LandingHeader() {
+  return (
+    <header className="border-b border-stone-200/70 bg-paper">
+      <div className="mx-auto flex min-h-[76px] max-w-5xl flex-wrap items-center justify-between gap-x-6 gap-y-3 px-5 py-3 sm:px-8">
+        <Link href="/" aria-label={`${brand.name} home`} className="shrink-0">
+          <DishaWordmark size="sm" />
+        </Link>
+
+        <div className="flex flex-1 items-center justify-end gap-1 sm:gap-2">
+          <nav aria-label="Primary" className="hidden items-center gap-1 md:flex">
+            {landingNav.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                className="rounded-md px-3 py-2 text-sm font-semibold text-slate-600 transition hover:text-ink"
+              >
+                {item.label}
+              </Link>
+            ))}
+          </nav>
+          <Link
+            href="/opportunities"
+            className="inline-flex min-h-10 items-center rounded-full bg-primary px-4 text-sm font-bold text-white transition hover:bg-blue-700"
+          >
+            Explore opportunities
+          </Link>
+        </div>
+      </div>
     </header>
   );
 }

@@ -10,7 +10,8 @@ const config: Config = {
     extend: {
       fontFamily: {
         serif: ["Georgia", "Cambria", "Noto Serif Devanagari", "Noto Sans Devanagari", "Kohinoor Devanagari", "Devanagari Sangam MN", "Times New Roman", "serif"],
-        sans: ["Inter", "Noto Sans Devanagari", "Kohinoor Devanagari", "Devanagari Sangam MN", "ui-sans-serif", "system-ui", "sans-serif"]
+        sans: ["Inter", "Noto Sans Devanagari", "Kohinoor Devanagari", "Devanagari Sangam MN", "ui-sans-serif", "system-ui", "sans-serif"],
+        devanagari: ["Noto Sans Devanagari", "Noto Serif Devanagari", "Kohinoor Devanagari", "Devanagari Sangam MN", "Mangal", "Nirmala UI", "ui-sans-serif", "system-ui", "sans-serif"]
       },
       colors: {
         ink: "#16233B",
